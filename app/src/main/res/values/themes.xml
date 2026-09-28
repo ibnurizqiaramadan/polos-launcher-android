@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Transparent window over the system wallpaper -->
-    <style name="Theme.MinimalistLauncher" parent="android:Theme.Material.Wallpaper.NoTitleBar" />
+    <!-- Pure black, no wallpaper: AMOLED pixels stay off -->
+    <style name="Theme.MinimalistLauncher" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
 </resources>
