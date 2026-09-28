@@ -157,7 +157,8 @@ private val SurfaceDim = Color(0xFF121212) // barely-lit fill for the search fie
 /** Long-press menu content for one app; call `close` to dismiss it. */
 private typealias AppMenu = @Composable (app: App, close: () -> Unit) -> Unit
 
-class App(val key: String, val label: String, val info: LauncherActivityInfo)
+/** [detail] tells apart apps that share a name (e.g. Xiaomi's and Google's Calendar); null otherwise. */
+class App(val key: String, val label: String, val info: LauncherActivityInfo, val detail: String? = null)
 
 class CalendarEvent(val id: Long, val title: String, val begin: Long)
 
@@ -310,12 +311,20 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun loadApps() {
-        apps = launcherApps.getActivityList(null, Process.myUserHandle())
-            .map {
-                val key = it.componentName.flattenToString()
-                App(key, prefs.getString("label:$key", null) ?: it.label.toString(), it)
+        val infos = launcherApps.getActivityList(null, Process.myUserHandle())
+        val labels = infos.map { prefs.getString("label:${it.componentName.flattenToString()}", null) ?: it.label.toString() }
+        val sameName = labels.groupingBy { it.lowercase() }.eachCount()
+        val sameNameAndPackage = infos.indices.groupingBy { labels[it].lowercase() to infos[it].componentName.packageName }.eachCount()
+        apps = infos.mapIndexed { i, info ->
+            val component = info.componentName
+            // twins get a subtitle: the package, or the activity too when one app has two entries with that name
+            val detail = when {
+                sameName.getValue(labels[i].lowercase()) < 2 -> null
+                sameNameAndPackage.getValue(labels[i].lowercase() to component.packageName) > 1 -> component.flattenToShortString()
+                else -> component.packageName
             }
-            .sortedBy { it.label.lowercase() }
+            App(component.flattenToString(), labels[i], info, detail)
+        }.sortedWith(compareBy({ it.label.lowercase() }, { it.detail }))
     }
 
     // Re-applied on every focus gain: dialogs, menus and other apps bring the bar back.
@@ -397,7 +406,7 @@ class MainActivity : ComponentActivity() {
             Spacer(Modifier.weight(1f))
             // favorites sit low on the right: within thumb reach
             favorites.mapNotNull { key -> apps.find { it.key == key } }
-                .forEach { AppItem(it, 28.sp, ::open, menu, Modifier.align(Alignment.End), FontWeight.Light) }
+                .forEach { AppItem(it, 28.sp, ::open, menu, Modifier.align(Alignment.End), FontWeight.Light, Alignment.End) }
             Spacer(Modifier.height(24.dp))
             media.nowPlaying?.let { track ->
                 Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -817,18 +826,23 @@ private fun AppItem(
     menu: AppMenu,
     modifier: Modifier = Modifier,
     fontWeight: FontWeight? = null,
+    align: Alignment.Horizontal = Alignment.Start,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     // propagateMinConstraints: a full-width row makes the whole row tappable; a wrapped one anchors the menu to the label
     Box(modifier, propagateMinConstraints = true) {
-        Text(
-            text = app.label,
-            fontSize = fontSize,
-            fontWeight = fontWeight,
-            modifier = Modifier
+        Column(
+            Modifier
                 .combinedClickable(onClick = { onOpen(app) }, onLongClick = { menuOpen = true })
-                .padding(horizontal = 24.dp, vertical = 12.dp),
-        )
+                // a little less air when a subtitle adds a line, so twins don't stand out as oversized rows
+                .padding(horizontal = 24.dp, vertical = if (app.detail != null) 8.dp else 12.dp),
+            horizontalAlignment = align,
+        ) {
+            Text(text = app.label, fontSize = fontSize, fontWeight = fontWeight)
+            app.detail?.let {
+                Text(text = it, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
         if (menuOpen) { // composed only while open: keeps every list item light while scrolling
             DropdownMenu(expanded = true, onDismissRequest = { menuOpen = false }) {
                 menu(app) { menuOpen = false }
