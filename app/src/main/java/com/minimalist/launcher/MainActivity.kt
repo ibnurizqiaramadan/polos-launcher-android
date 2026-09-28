@@ -5,6 +5,7 @@ import android.app.AlarmManager
 import android.app.SearchManager
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -18,8 +19,10 @@ import android.os.Bundle
 import android.os.Process
 import android.provider.AlarmClock
 import android.provider.CalendarContract
+import android.provider.CalendarContract.Instances
 import android.provider.Settings
 import android.text.format.DateFormat
+import android.text.format.DateUtils
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -86,6 +89,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -96,7 +100,9 @@ import androidx.core.content.edit
 import androidx.lifecycle.lifecycleScope
 import kotlin.math.exp
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val MAX_FAVORITES = 6
 
@@ -104,6 +110,11 @@ private const val MAX_FAVORITES = 6
 private typealias AppMenu = @Composable (app: App, close: () -> Unit) -> Unit
 
 class App(val key: String, val label: String, val info: LauncherActivityInfo)
+
+class CalendarEvent(val id: Long, val title: String, val begin: Long)
+
+private const val LOCATION = Manifest.permission.ACCESS_COARSE_LOCATION
+private const val CALENDAR = Manifest.permission.READ_CALENDAR
 
 class MainActivity : ComponentActivity() {
     private val launcherApps by lazy { getSystemService(LauncherApps::class.java) }
@@ -114,13 +125,12 @@ class MainActivity : ComponentActivity() {
     private var renaming by mutableStateOf<App?>(null)
     private var drawerOpen by mutableStateOf(false)
     private var weather by mutableStateOf<String?>(null)
-    private var weatherPrompt by mutableStateOf(false) // location is only requested after the user taps
     private var weatherFetchedAt = 0L
     private var nextAlarm by mutableStateOf<Long?>(null)
-    private val requestLocation = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (!granted) prefs.edit { putBoolean("weather_declined", true) }
-        refreshWeather()
-    }
+    private var nextEvent by mutableStateOf<CalendarEvent?>(null)
+    private var hints by mutableStateOf(emptyList<Pair<String, () -> Unit>>()) // setup hints: text to on-tap
+    // the dialog pausing us means onResume re-reads every permission, so the result itself is unused
+    private val requestPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -147,15 +157,46 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         loadApps()
+        refreshHints()
         refreshWeather()
         nextAlarm = getSystemService(AlarmManager::class.java).nextAlarmClock?.triggerTime
+        if (granted(CALENDAR)) lifecycleScope.launch { nextEvent = withContext(Dispatchers.IO) { queryNextEvent() } }
+    }
+
+    private fun granted(permission: String) = checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+
+    // a hint shows until tapped once; after that the user can still grant access from App info
+    private fun refreshHints() {
+        hints = buildList {
+            fun hint(text: String, key: String, ready: Boolean, request: () -> Unit) {
+                if (!ready && !prefs.getBoolean("asked:$key", false)) {
+                    add(text to { prefs.edit { putBoolean("asked:$key", true) }; request() })
+                }
+            }
+            hint("Tap to show weather", LOCATION, granted(LOCATION)) { requestPermission.launch(LOCATION) }
+            hint("Tap to show events", CALENDAR, granted(CALENDAR)) { requestPermission.launch(CALENDAR) }
+        }
+    }
+
+    // next timed event within 24h that hasn't ended and wasn't declined
+    private fun queryNextEvent(): CalendarEvent? {
+        val now = System.currentTimeMillis()
+        val range = Instances.CONTENT_URI.buildUpon()
+        ContentUris.appendId(range, now)
+        ContentUris.appendId(range, now + 24 * 3600_000)
+        return contentResolver.query(
+            range.build(),
+            arrayOf(Instances.EVENT_ID, Instances.TITLE, Instances.BEGIN),
+            "${Instances.ALL_DAY} = 0 AND ${Instances.END} > ? AND ${Instances.VISIBLE} = 1 AND " +
+                "${Instances.SELF_ATTENDEE_STATUS} != ${CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED}",
+            arrayOf("$now"),
+            "${Instances.BEGIN} ASC",
+        )?.use { c -> if (c.moveToFirst()) CalendarEvent(c.getLong(0), c.getString(1).orEmpty(), c.getLong(2)) else null }
     }
 
     // ponytail: 30 min in-memory throttle; persist the last result if cold starts without network matter
     private fun refreshWeather() {
-        val granted = checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        weatherPrompt = !granted && !prefs.getBoolean("weather_declined", false)
-        if (!granted || System.currentTimeMillis() - weatherFetchedAt < 30 * 60_000) return
+        if (!granted(LOCATION) || System.currentTimeMillis() - weatherFetchedAt < 30 * 60_000) return
         weatherFetchedAt = System.currentTimeMillis()
         lifecycleScope.launch {
             val result = runCatching { currentWeather() }.getOrNull()
@@ -211,14 +252,17 @@ class MainActivity : ComponentActivity() {
                     }
                     InfoText("${batteryLevel()}%") { launch(Intent(Intent.ACTION_POWER_USAGE_SUMMARY)) }
                 }
-                nextAlarm?.let { time ->
-                    // day name only when it's not within the next 24h
-                    val pattern = if (time - System.currentTimeMillis() < 24 * 3600_000) "HH:mm" else "EEE HH:mm"
-                    SubText("Alarm ${DateFormat.format(pattern, time)}") { launch(Intent(AlarmClock.ACTION_SHOW_ALARMS)) }
+                nextEvent?.let { event ->
+                    val time = if (event.begin <= System.currentTimeMillis()) "Now" else timeText(event.begin)
+                    SubText("$time  ${event.title}") {
+                        launch(
+                            Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, event.id))
+                                .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, event.begin)
+                        )
+                    }
                 }
-                if (weatherPrompt) {
-                    SubText("Tap to show weather") { requestLocation.launch(Manifest.permission.ACCESS_COARSE_LOCATION) }
-                }
+                nextAlarm?.let { SubText("Alarm ${timeText(it)}") { launch(Intent(AlarmClock.ACTION_SHOW_ALARMS)) } }
+                hints.forEach { (text, onTap) -> SubText(text, onTap) }
             }
             Spacer(Modifier.weight(1f))
             favorites.mapNotNull { key -> apps.find { it.key == key } }
@@ -309,11 +353,16 @@ private fun InfoText(text: String, onClick: (() -> Unit)? = null) = Text(
     modifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier,
 )
 
+// "14:00" today, "Tue 09:00" otherwise
+private fun timeText(millis: Long) = DateFormat.format(if (DateUtils.isToday(millis)) "HH:mm" else "EEE HH:mm", millis)
+
 @Composable
 private fun SubText(text: String, onClick: () -> Unit) = Text(
     text = text,
     color = Color.Gray,
     fontSize = 14.sp,
+    maxLines = 1,
+    overflow = TextOverflow.Ellipsis,
     modifier = Modifier
         .clickable(onClick = onClick)
         .padding(horizontal = 8.dp, vertical = 4.dp),
