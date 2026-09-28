@@ -48,12 +48,20 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
    - Compose: `enableEdgeToEdge()` + WindowInsets handling agar wallpaper sistem tetap tembus pandang jika diinginkan.
 
 ## Fitur Minimalist Launcher yang Direkomendasikan
-- [ ] Daftar aplikasi teks vertikal A-Z (tanpa icon yang mendistraksi, opsi toggle icon monochrome)
-- [ ] Fast search bar dengan keyboard auto-popup
-- [ ] Pin favorit di home screen (maksimal 4-6 app esensial)
-- [ ] Gesture swipe up (app drawer) & swipe down (notifikasi sistem)
-- [ ] Indikator jam, tanggal, dan battery percentage minimalis
-- [ ] Opsi sembunyikan aplikasi (Hide apps) & rename label app
+- [x] Daftar aplikasi teks vertikal A-Z (tanpa icon yang mendistraksi)
+- [ ] Opsi toggle icon monochrome
+- [x] Fast search bar dengan keyboard auto-popup
+- [x] Pin favorit di home screen (maksimal 6 app esensial)
+- [x] Gesture swipe up (app drawer) & swipe down (notifikasi sistem)
+- [x] Indikator jam, tanggal, dan battery percentage minimalis
+- [x] Opsi sembunyikan aplikasi (Hide apps) & rename label app
+
+## Cara Pakai
+- **Swipe up** di home: buka app drawer (keyboard search langsung muncul, Enter = buka hasil pertama)
+- **Swipe down** di home: buka panel notifikasi
+- **Long press** app: Add to home / Rename / Hide / App info
+- App tersembunyi ada di "Hidden apps (n)" paling bawah drawer
+- Build & install: `./gradlew installDebug`, lalu tekan Home dan pilih "Minimalist Launcher"
 
 ---
 *Environment coding-server-0: Java OpenJDK 21 siap pakai.*
