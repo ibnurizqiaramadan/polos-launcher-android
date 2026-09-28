@@ -17,22 +17,31 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -117,22 +126,46 @@ private fun HomeScreen(onSwipeUp: () -> Unit, onSwipeDown: () -> Unit) {
 
 @Composable
 private fun AppList(apps: List<App>, onOpen: (App) -> Unit, onInfo: (App) -> Unit) {
-    LazyColumn(
-        modifier = Modifier
+    var query by remember { mutableStateOf("") }
+    val shown = apps.filter { it.label.contains(query, ignoreCase = true) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() } // pops the keyboard as soon as the drawer opens
+
+    Column(
+        Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.6f)), // keeps white labels readable on light wallpapers
-        contentPadding = WindowInsets.systemBars.asPaddingValues(),
+            .background(Color.Black.copy(alpha = 0.6f)) // keeps white labels readable on light wallpapers
+            .safeDrawingPadding()
     ) {
-        items(apps, key = { it.info.componentName.flattenToString() }) { app ->
-            Text(
-                text = app.label,
-                color = Color.White,
-                fontSize = 22.sp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .combinedClickable(onClick = { onOpen(app) }, onLongClick = { onInfo(app) })
-                    .padding(horizontal = 24.dp, vertical = 12.dp),
-            )
+        BasicTextField(
+            value = query,
+            onValueChange = { query = it },
+            singleLine = true,
+            textStyle = TextStyle(color = Color.White, fontSize = 22.sp),
+            cursorBrush = SolidColor(Color.White),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+            keyboardActions = KeyboardActions(onGo = { if (query.isNotBlank()) shown.firstOrNull()?.let(onOpen) }),
+            decorationBox = { field ->
+                if (query.isEmpty()) Text("Search", color = Color.Gray, fontSize = 22.sp)
+                field()
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focus)
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+        )
+        LazyColumn(Modifier.weight(1f)) {
+            items(shown, key = { it.info.componentName.flattenToString() }) { app ->
+                Text(
+                    text = app.label,
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(onClick = { onOpen(app) }, onLongClick = { onInfo(app) })
+                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                )
+            }
         }
     }
 }
