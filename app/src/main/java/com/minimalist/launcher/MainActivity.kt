@@ -275,7 +275,7 @@ private fun HomeScreen(
             }
         }
         Spacer(Modifier.weight(1f))
-        favorites.forEach { AppItem(it, 28.sp, onOpen, menu) }
+        favorites.forEach { AppItem(it, 28.sp, onOpen, menu, Modifier.align(Alignment.End)) }
         Spacer(Modifier.weight(1f))
     }
 }
@@ -329,7 +329,7 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
     ) {
         Box(Modifier.weight(1f)) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(end = 48.dp)) {
-                items(shown, key = { it.key }) { AppItem(it, 22.sp, onOpen, menu) }
+                items(shown, key = { it.key }) { AppItem(it, 22.sp, onOpen, menu, Modifier.fillMaxWidth()) }
                 if (showHidden || hiddenCount > 0) item {
                     Text(
                         text = if (showHidden) "Back to apps" else "Hidden apps ($hiddenCount)",
@@ -438,15 +438,15 @@ private fun AlphabetScroller(sections: List<Pair<Char, Int>>, listState: LazyLis
 }
 
 @Composable
-private fun AppItem(app: App, fontSize: TextUnit, onOpen: (App) -> Unit, menu: AppMenu) {
+private fun AppItem(app: App, fontSize: TextUnit, onOpen: (App) -> Unit, menu: AppMenu, modifier: Modifier = Modifier) {
     var menuOpen by remember { mutableStateOf(false) }
-    Box {
+    // propagateMinConstraints: a full-width row makes the whole row tappable; a wrapped one anchors the menu to the label
+    Box(modifier, propagateMinConstraints = true) {
         Text(
             text = app.label,
             color = Color.White,
             fontSize = fontSize,
             modifier = Modifier
-                .fillMaxWidth()
                 .combinedClickable(onClick = { onOpen(app) }, onLongClick = { menuOpen = true })
                 .padding(horizontal = 24.dp, vertical = 12.dp),
         )
