@@ -20,6 +20,7 @@ import android.os.Process
 import android.provider.AlarmClock
 import android.provider.CalendarContract
 import android.provider.CalendarContract.Instances
+import android.provider.MediaStore
 import android.provider.Settings
 import android.text.format.DateFormat
 import android.text.format.DateUtils
@@ -275,7 +276,13 @@ class MainActivity : ComponentActivity() {
             favorites.mapNotNull { key -> apps.find { it.key == key } }
                 .forEach { AppItem(it, 28.sp, ::open, menu, Modifier.align(Alignment.End)) }
             Spacer(Modifier.weight(1f))
-            screenTime?.let { SubText("Screen time ${formatDuration(it)}", Modifier.align(Alignment.CenterHorizontally)) }
+            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                SubText("Phone", Modifier.align(Alignment.CenterStart)) { launch(Intent(Intent.ACTION_DIAL)) }
+                screenTime?.let { SubText("Screen time ${formatDuration(it)}", Modifier.align(Alignment.Center)) }
+                SubText("Camera", Modifier.align(Alignment.CenterEnd)) {
+                    launch(Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA))
+                }
+            }
         }
     }
 
