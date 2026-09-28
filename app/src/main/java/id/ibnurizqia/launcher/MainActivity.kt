@@ -117,6 +117,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import kotlin.math.exp
 import kotlin.math.roundToInt
@@ -281,6 +284,22 @@ class MainActivity : ComponentActivity() {
                 App(key, prefs.getString("label:$key", null) ?: it.label.toString(), it)
             }
             .sortedBy { it.label.lowercase() }
+    }
+
+    // Re-applied on every focus gain: dialogs, menus and other apps bring the bar back.
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus) return
+        WindowCompat.getInsetsController(window, window.decorView).run {
+            // 3-button phones: no button bar on the launcher itself; a swipe from the bottom shows it briefly.
+            // Gesture-nav phones keep theirs, since hidden bars make edge gestures take two swipes.
+            if (usesButtonNavigation()) {
+                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                hide(WindowInsetsCompat.Type.navigationBars())
+            } else {
+                show(WindowInsetsCompat.Type.navigationBars())
+            }
+        }
     }
 
     // Home button pressed while the launcher is already in front
