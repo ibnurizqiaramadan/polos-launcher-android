@@ -73,6 +73,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -117,6 +118,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -829,10 +831,15 @@ private fun AppItem(
     align: Alignment.Horizontal = Alignment.Start,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    // propagateMinConstraints: a full-width row makes the whole row tappable; a wrapped one anchors the menu to the label
+    var press by remember { mutableStateOf(Offset.Zero) } // where the finger went down, within the item
+    // propagateMinConstraints: a full-width row makes the whole row tappable
     Box(modifier, propagateMinConstraints = true) {
         Column(
             Modifier
+                // watch-only (Initial pass, nothing consumed): tap, long-press and ripple behave as before
+                .pointerInput(Unit) {
+                    awaitEachGesture { press = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial).position }
+                }
                 .combinedClickable(onClick = { onOpen(app) }, onLongClick = { menuOpen = true })
                 // a little less air when a subtitle adds a line, so twins don't stand out as oversized rows
                 .padding(horizontal = 24.dp, vertical = if (app.detail != null) 8.dp else 12.dp),
@@ -844,8 +851,16 @@ private fun AppItem(
             }
         }
         if (menuOpen) { // composed only while open: keeps every list item light while scrolling
-            DropdownMenu(expanded = true, onDismissRequest = { menuOpen = false }) {
-                menu(app) { menuOpen = false }
+            // zero-size anchor at the finger: the menu opens right there and flips around that point near screen edges
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .wrapContentSize(Alignment.TopStart)
+                    .offset { IntOffset(press.x.roundToInt(), press.y.roundToInt()) }
+            ) {
+                DropdownMenu(expanded = true, onDismissRequest = { menuOpen = false }) {
+                    menu(app) { menuOpen = false }
+                }
             }
         }
     }
