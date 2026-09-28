@@ -35,9 +35,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.EaseInCubic
 import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
@@ -45,6 +47,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -59,6 +62,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -70,6 +74,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -86,10 +91,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -131,11 +136,17 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.view.WindowCompat
@@ -851,18 +862,84 @@ private fun AppItem(
             }
         }
         if (menuOpen) { // composed only while open: keeps every list item light while scrolling
-            // zero-size anchor at the finger: the menu opens right there and flips around that point near screen edges
+            // zero-size anchor at the finger; FingerMenu places itself around that point
             Box(
                 Modifier
                     .matchParentSize()
                     .wrapContentSize(Alignment.TopStart)
                     .offset { IntOffset(press.x.roundToInt(), press.y.roundToInt()) }
             ) {
-                DropdownMenu(expanded = true, onDismissRequest = { menuOpen = false }) {
-                    menu(app) { menuOpen = false }
-                }
+                FingerMenu(onDismiss = { menuOpen = false }) { menu(app) { menuOpen = false } }
             }
         }
+    }
+}
+
+/**
+ * A Material-looking menu that opens up and to the left of the finger so the thumb never covers it,
+ * moving right / below only when there's no room. Its parent must be a zero-size anchor at the touch point.
+ */
+@Composable
+private fun FingerMenu(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    val density = LocalDensity.current
+    // keep clear of the status and navigation bars ourselves; otherwise the system nudges the popup and it can land on the finger
+    val bars = WindowInsets.safeDrawing
+    val top = bars.getTop(density)
+    val bottom = bars.getBottom(density)
+    val placement = remember(density, top, bottom) {
+        with(density) { AwayFromFinger(gap = 16.dp.roundToPx(), margin = 8.dp.roundToPx(), top = top, bottom = bottom) }
+    }
+    val shown = remember { MutableTransitionState(false) }.apply { targetState = true }
+    Popup(popupPositionProvider = placement, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
+        AnimatedVisibility(shown, enter = fadeIn(tween(120)) + scaleIn(tween(120), initialScale = 0.9f)) {
+            Surface(
+                shape = MenuDefaults.shape,
+                color = MenuDefaults.containerColor,
+                tonalElevation = MenuDefaults.TonalElevation,
+                shadowElevation = MenuDefaults.ShadowElevation,
+            ) {
+                Column(Modifier.padding(vertical = 8.dp).width(IntrinsicSize.Max)) { content() }
+            }
+        }
+    }
+}
+
+/**
+ * Beside the finger, preferring its left (a right thumb comes in from the bottom right), then its right;
+ * once beside it the menu can't be covered, so it just sits as high as fits, ideally above the finger.
+ * Only if neither side fits does it go above, else below, the finger.
+ */
+private class AwayFromFinger(
+    private val gap: Int,
+    private val margin: Int,
+    private val top: Int, // status bar
+    private val bottom: Int, // navigation bar
+) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize,
+    ): IntOffset {
+        val (fingerX, fingerY) = anchorBounds.left to anchorBounds.top
+        val (width, height) = popupContentSize.width to popupContentSize.height
+        val minY = top + margin
+        val maxY = maxOf(minY, windowSize.height - bottom - margin - height)
+        val maxX = maxOf(margin, windowSize.width - margin - width)
+        val left = fingerX - gap - width
+        val right = fingerX + gap
+        val x = when {
+            left >= margin -> left
+            right <= maxX -> right
+            else -> null // too wide for either side
+        }
+        val above = fingerY - gap - height
+        val y = when {
+            x != null -> above.coerceIn(minY, maxY)
+            above >= minY -> above
+            else -> (fingerY + gap).coerceIn(minY, maxY)
+        }
+        return IntOffset(x ?: left.coerceIn(margin, maxX), y)
     }
 }
 
