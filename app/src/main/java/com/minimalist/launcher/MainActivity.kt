@@ -1,11 +1,13 @@
 package com.minimalist.launcher
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.LauncherActivityInfo
 import android.content.pm.LauncherApps
+import android.content.pm.PackageManager
 import android.graphics.Color.TRANSPARENT
 import android.net.Uri
 import android.os.BatteryManager
@@ -17,6 +19,7 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -82,8 +85,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
+import androidx.lifecycle.lifecycleScope
 import kotlin.math.exp
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 private const val MAX_FAVORITES = 6
 
@@ -100,6 +105,13 @@ class MainActivity : ComponentActivity() {
     private var hidden by mutableStateOf(emptySet<String>())
     private var renaming by mutableStateOf<App?>(null)
     private var drawerOpen by mutableStateOf(false)
+    private var weather by mutableStateOf<String?>(null)
+    private var weatherPrompt by mutableStateOf(false) // location is only requested after the user taps
+    private var weatherFetchedAt = 0L
+    private val requestLocation = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) prefs.edit { putBoolean("weather_declined", true) }
+        refreshWeather()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -119,6 +131,9 @@ class MainActivity : ComponentActivity() {
                         menu = menu,
                         onSwipeUp = { drawerOpen = true },
                         onSwipeDown = ::expandNotifications,
+                        weather = weather,
+                        weatherPrompt = weatherPrompt,
+                        onEnableWeather = { requestLocation.launch(Manifest.permission.ACCESS_COARSE_LOCATION) },
                     )
                 }
                 renaming?.let { app ->
@@ -132,6 +147,19 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         loadApps()
+        refreshWeather()
+    }
+
+    // ponytail: 30 min in-memory throttle; persist the last result if cold starts without network matter
+    private fun refreshWeather() {
+        val granted = checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        weatherPrompt = !granted && !prefs.getBoolean("weather_declined", false)
+        if (!granted || System.currentTimeMillis() - weatherFetchedAt < 30 * 60_000) return
+        weatherFetchedAt = System.currentTimeMillis()
+        lifecycleScope.launch {
+            val result = runCatching { currentWeather() }.getOrNull()
+            if (result != null) weather = result else weatherFetchedAt = 0 // failed: retry on next resume
+        }
     }
 
     private fun loadApps() {
@@ -206,6 +234,9 @@ private fun HomeScreen(
     menu: AppMenu,
     onSwipeUp: () -> Unit,
     onSwipeDown: () -> Unit,
+    weather: String?,
+    weatherPrompt: Boolean,
+    onEnableWeather: () -> Unit,
 ) {
     Column(
         Modifier
@@ -227,11 +258,21 @@ private fun HomeScreen(
             .safeDrawingPadding()
             .padding(vertical = 24.dp)
     ) {
-        Column(Modifier.padding(horizontal = 24.dp)) {
-            // Platform TextClock follows the 24h setting, time zone changes and wake-from-sleep on its own
-            TextClock(formatPattern = null, sizeSp = 64f) // null = system h:mm / HH:mm
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            // Platform TextClock handles minute ticks, time zone changes and wake-from-sleep on its own
+            TextClock(formatPattern = "HH:mm", sizeSp = 64f) // always 24h
             TextClock(formatPattern = "EEEE, d MMMM", sizeSp = 18f)
-            Text("${batteryLevel()}%", color = Color.White, fontSize = 18.sp)
+            Text(listOfNotNull(weather, "${batteryLevel()}%").joinToString("  ·  "), color = Color.White, fontSize = 18.sp)
+            if (weatherPrompt) {
+                Text(
+                    text = "Tap to show weather",
+                    color = Color.Gray,
+                    fontSize = 14.sp,
+                    modifier = Modifier
+                        .clickable(onClick = onEnableWeather)
+                        .padding(8.dp),
+                )
+            }
         }
         Spacer(Modifier.weight(1f))
         favorites.forEach { AppItem(it, 28.sp, onOpen, menu) }
@@ -240,10 +281,11 @@ private fun HomeScreen(
 }
 
 @Composable
-private fun TextClock(formatPattern: String?, sizeSp: Float) = AndroidView(
+private fun TextClock(formatPattern: String, sizeSp: Float) = AndroidView(
     factory = {
         android.widget.TextClock(it).apply {
-            formatPattern?.let { f -> format12Hour = f; format24Hour = f }
+            format12Hour = formatPattern
+            format24Hour = formatPattern
             textSize = sizeSp
             setTextColor(android.graphics.Color.WHITE)
         }

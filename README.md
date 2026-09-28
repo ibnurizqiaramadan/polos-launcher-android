@@ -55,12 +55,15 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 - [x] Fast search bar dengan keyboard auto-popup
 - [x] Pin favorit di home screen (maksimal 6 app esensial)
 - [x] Gesture swipe up (app drawer) & swipe down (notifikasi sistem)
-- [x] Indikator jam, tanggal, dan battery percentage minimalis
+- [x] Indikator jam (24 jam, center), tanggal, dan battery percentage minimalis
+- [x] Info cuaca (Open-Meteo, lokasi perkiraan)
 - [x] Opsi sembunyikan aplikasi (Hide apps) & rename label app
 
 ## Cara Pakai
 - **Swipe up** di home: buka app drawer (keyboard search langsung muncul, Enter = buka hasil pertama)
 - **Swipe down** di home: buka panel notifikasi
+- **Tap to show weather** di home: izinkan lokasi perkiraan untuk menampilkan cuaca (refresh tiap 30 menit)
+- Search bar ada di bawah drawer, tepat di atas keyboard
 - **Long press** app: Add to home / Rename / Hide / App info
 - **Drag huruf** di kanan drawer: lompat ke huruf itu (efek wave + bubble)
 - App tersembunyi ada di "Hidden apps (n)" paling bawah drawer
