@@ -18,6 +18,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
@@ -32,10 +33,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -52,8 +56,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,18 +79,21 @@ class MainActivity : ComponentActivity() {
     private val prefs by lazy { getSharedPreferences("launcher", MODE_PRIVATE) }
     private var apps by mutableStateOf(emptyList<App>())
     private var favorites by mutableStateOf(emptyList<String>()) // app keys, in display order
+    private var hidden by mutableStateOf(emptySet<String>())
+    private var renaming by mutableStateOf<App?>(null)
     private var drawerOpen by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(SystemBarStyle.dark(TRANSPARENT), SystemBarStyle.dark(TRANSPARENT))
         favorites = prefs.getString("favorites", "")!!.lines().filter { it.isNotEmpty() }
+        hidden = prefs.getStringSet("hidden", emptySet())!!.toSet()
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 val menu: AppMenu = { app, close -> Menu(app, close) }
                 BackHandler { drawerOpen = false } // home screen: back never leaves the launcher
                 if (drawerOpen) {
-                    AppList(apps, onOpen = ::open, menu = menu)
+                    AppList(apps, hidden, onOpen = ::open, menu = menu)
                 } else {
                     HomeScreen(
                         favorites = favorites.mapNotNull { key -> apps.find { it.key == key } },
@@ -94,6 +103,9 @@ class MainActivity : ComponentActivity() {
                         onSwipeDown = ::expandNotifications,
                     )
                 }
+                renaming?.let { app ->
+                    RenameDialog(app, onRename = { rename(app, it); renaming = null }, onDismiss = { renaming = null })
+                }
             }
         }
     }
@@ -101,8 +113,15 @@ class MainActivity : ComponentActivity() {
     // ponytail: reload on every resume catches installs/uninstalls; switch to LauncherApps.Callback if it gets slow
     override fun onResume() {
         super.onResume()
+        loadApps()
+    }
+
+    private fun loadApps() {
         apps = launcherApps.getActivityList(null, Process.myUserHandle())
-            .map { App(it.componentName.flattenToString(), it.label.toString(), it) }
+            .map {
+                val key = it.componentName.flattenToString()
+                App(key, prefs.getString("label:$key", null) ?: it.label.toString(), it)
+            }
             .sortedBy { it.label.lowercase() }
     }
 
@@ -118,12 +137,25 @@ class MainActivity : ComponentActivity() {
         if (favorite || favorites.size < MAX_FAVORITES) {
             MenuItem(if (favorite) "Remove from home" else "Add to home", close) { toggleFavorite(app) }
         }
+        MenuItem("Rename", close) { renaming = app }
+        MenuItem(if (app.key in hidden) "Unhide" else "Hide", close) { toggleHidden(app) }
         MenuItem("App info", close) { openInfo(app) }
     }
 
     private fun toggleFavorite(app: App) {
         favorites = if (app.key in favorites) favorites - app.key else favorites + app.key
         prefs.edit { putString("favorites", favorites.joinToString("\n")) }
+    }
+
+    private fun toggleHidden(app: App) {
+        hidden = if (app.key in hidden) hidden - app.key else hidden + app.key
+        prefs.edit { putStringSet("hidden", hidden) }
+    }
+
+    // blank name restores the app's own label
+    private fun rename(app: App, name: String) {
+        prefs.edit { if (name.isBlank()) remove("label:${app.key}") else putString("label:${app.key}", name.trim()) }
+        loadApps()
     }
 
     private fun open(app: App) {
@@ -218,9 +250,12 @@ private fun batteryLevel(): Int {
 }
 
 @Composable
-private fun AppList(apps: List<App>, onOpen: (App) -> Unit, menu: AppMenu) {
+private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit, menu: AppMenu) {
     var query by remember { mutableStateOf("") }
-    val shown = apps.filter { it.label.contains(query, ignoreCase = true) }
+    var showHidden by remember { mutableStateOf(false) }
+    BackHandler(showHidden) { showHidden = false }
+    val shown = apps.filter { (it.key in hidden) == showHidden && it.label.contains(query, ignoreCase = true) }
+    val hiddenCount = apps.count { it.key in hidden }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() } // pops the keyboard as soon as the drawer opens
 
@@ -249,6 +284,17 @@ private fun AppList(apps: List<App>, onOpen: (App) -> Unit, menu: AppMenu) {
         )
         LazyColumn(Modifier.weight(1f)) {
             items(shown, key = { it.key }) { AppItem(it, 22.sp, onOpen, menu) }
+            if (showHidden || hiddenCount > 0) item {
+                Text(
+                    text = if (showHidden) "Back to apps" else "Hidden apps ($hiddenCount)",
+                    color = Color.Gray,
+                    fontSize = 18.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showHidden = !showHidden }
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                )
+            }
         }
     }
 }
@@ -275,3 +321,26 @@ private fun AppItem(app: App, fontSize: TextUnit, onOpen: (App) -> Unit, menu: A
 @Composable
 private fun MenuItem(text: String, close: () -> Unit, action: () -> Unit) =
     DropdownMenuItem(text = { Text(text) }, onClick = { close(); action() })
+
+@Composable
+private fun RenameDialog(app: App, onRename: (String) -> Unit, onDismiss: () -> Unit) {
+    // whole label pre-selected so typing replaces it
+    var name by remember { mutableStateOf(TextFieldValue(app.label, TextRange(0, app.label.length))) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename") },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                placeholder = { Text(app.info.label.toString()) },
+                modifier = Modifier.focusRequester(focus),
+            )
+        },
+        confirmButton = { TextButton(onClick = { onRename(name.text) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
