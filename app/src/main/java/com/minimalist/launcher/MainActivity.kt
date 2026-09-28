@@ -17,18 +17,29 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -48,23 +59,31 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
+import kotlin.math.exp
+import kotlin.math.roundToInt
 
 private const val MAX_FAVORITES = 6
 
@@ -255,6 +274,9 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
     BackHandler(showHidden) { showHidden = false }
     val shown = apps.filter { (it.key in hidden) == showHidden && it.label.contains(query, ignoreCase = true) }
     val hiddenCount = apps.count { it.key in hidden }
+    val listState = rememberLazyListState()
+    // first list index of each letter, e.g. [('C', 0), ('D', 5), ...]
+    val sections = shown.withIndex().distinctBy { section(it.value.label) }.map { section(it.value.label) to it.index }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() } // pops the keyboard as soon as the drawer opens
 
@@ -280,18 +302,93 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
                 .focusRequester(focus)
                 .padding(horizontal = 24.dp, vertical = 16.dp),
         )
-        LazyColumn(Modifier.weight(1f)) {
-            items(shown, key = { it.key }) { AppItem(it, 22.sp, onOpen, menu) }
-            if (showHidden || hiddenCount > 0) item {
-                Text(
-                    text = if (showHidden) "Back to apps" else "Hidden apps ($hiddenCount)",
-                    color = Color.Gray,
-                    fontSize = 18.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showHidden = !showHidden }
-                        .padding(horizontal = 24.dp, vertical = 16.dp),
+        Box(Modifier.weight(1f)) {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(end = 48.dp)) {
+                items(shown, key = { it.key }) { AppItem(it, 22.sp, onOpen, menu) }
+                if (showHidden || hiddenCount > 0) item {
+                    Text(
+                        text = if (showHidden) "Back to apps" else "Hidden apps ($hiddenCount)",
+                        color = Color.Gray,
+                        fontSize = 18.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showHidden = !showHidden }
+                            .padding(horizontal = 24.dp, vertical = 16.dp),
+                    )
+                }
+            }
+            if (sections.isNotEmpty()) {
+                AlphabetScroller(sections, listState, Modifier.align(Alignment.TopEnd).padding(end = 8.dp))
+            }
+        }
+    }
+}
+
+private fun section(label: String) = label.firstOrNull()?.uppercaseChar()?.takeIf { it.isLetter() } ?: '#'
+
+private val LetterHeight = 20.dp
+private val WaveShift = 40.dp
+
+/** Letter index on the right: drag to jump, letters near the finger bulge left like a wave. */
+@Composable
+private fun AlphabetScroller(sections: List<Pair<Char, Int>>, listState: LazyListState, modifier: Modifier) {
+    val haptic = LocalHapticFeedback.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val letterPx = with(LocalDensity.current) { LetterHeight.toPx() }
+    var touchY by remember { mutableStateOf<Float?>(null) } // finger y inside the scroller, null when lifted
+    val active = touchY?.let { (it / letterPx).toInt().coerceIn(sections.indices) }
+
+    LaunchedEffect(active) {
+        if (active == null) return@LaunchedEffect
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        listState.scrollToItem(sections[active].second)
+    }
+
+    Box(modifier.width(48.dp)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        keyboard?.hide() // free up the whole list
+                        touchY = down.position.y
+                        do {
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { it.consume() }
+                            touchY = event.changes.first().position.y
+                        } while (event.changes.any { it.pressed })
+                        touchY = null
+                    }
+                }
+        ) {
+            sections.forEachIndexed { i, (letter, _) ->
+                val distance = touchY?.let { i + 0.5f - it / letterPx } // in letters
+                val shift by animateDpAsState(
+                    if (distance == null) 0.dp else WaveShift * exp(-distance * distance / 18f),
+                    label = "wave",
                 )
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(LetterHeight)
+                        .offset(x = -shift),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(letter.toString(), color = if (i == active) Color.White else Color.Gray, fontSize = 13.sp)
+                }
+            }
+        }
+        val y = touchY
+        if (y != null && active != null) {
+            Box(
+                Modifier
+                    .offset { IntOffset((-96).dp.roundToPx(), (y - 28.dp.toPx()).roundToInt()) }
+                    .size(56.dp)
+                    .background(Color.White, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(sections[active].first.toString(), color = Color.Black, fontSize = 28.sp)
             }
         }
     }

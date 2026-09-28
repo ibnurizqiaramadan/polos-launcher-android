@@ -50,6 +50,8 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 ## Fitur Minimalist Launcher yang Direkomendasikan
 - [x] Daftar aplikasi teks vertikal A-Z (tanpa icon yang mendistraksi)
 - [ ] Opsi toggle icon monochrome
+- [x] Alphabet fast scroller (wave) di app drawer
+- [x] Tema pitch black (#000) untuk hemat baterai AMOLED
 - [x] Fast search bar dengan keyboard auto-popup
 - [x] Pin favorit di home screen (maksimal 6 app esensial)
 - [x] Gesture swipe up (app drawer) & swipe down (notifikasi sistem)
@@ -60,6 +62,7 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 - **Swipe up** di home: buka app drawer (keyboard search langsung muncul, Enter = buka hasil pertama)
 - **Swipe down** di home: buka panel notifikasi
 - **Long press** app: Add to home / Rename / Hide / App info
+- **Drag huruf** di kanan drawer: lompat ke huruf itu (efek wave + bubble)
 - App tersembunyi ada di "Hidden apps (n)" paling bawah drawer
 - Build & install: `./gradlew installDebug`, lalu tekan Home dan pilih "Minimalist Launcher"
 
