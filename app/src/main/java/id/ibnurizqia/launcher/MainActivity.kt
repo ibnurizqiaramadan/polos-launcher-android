@@ -37,6 +37,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.EaseInCubic
 import androidx.compose.animation.core.EaseOutCubic
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -99,14 +100,20 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -120,6 +127,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -198,7 +206,7 @@ class MainActivity : ComponentActivity() {
                         },
                         label = "drawer",
                     ) { open ->
-                        if (open) AppList(apps, hidden, onOpen = ::open, menu = menu) else HomeScreen(menu)
+                        if (open) AppList(apps, hidden, onOpen = ::open, onClose = { drawerOpen = false }, menu = menu) else HomeScreen(menu)
                     }
                     renaming?.let { app ->
                         RenameDialog(app, onRename = { rename(app, it); renaming = null }, onDismiss = { renaming = null })
@@ -543,7 +551,7 @@ private fun batteryLevel(): Int {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit, menu: AppMenu) {
+private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit, onClose: () -> Unit, menu: AppMenu) {
     var query by remember { mutableStateOf("") }
     var showHidden by remember { mutableStateOf(false) }
     BackHandler(showHidden) { showHidden = false }
@@ -552,10 +560,17 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
     val listState = rememberLazyListState()
     // first list index of each letter present, e.g. {'C'=0, 'D'=5, ...}
     val firstIndex = HashMap<Char, Int>().apply { shown.forEachIndexed { i, app -> putIfAbsent(section(app.label), i) } }
+    val pullToClose = rememberPullToClose(onClose)
 
     Column(
         Modifier
             .fillMaxSize()
+            .nestedScroll(pullToClose)
+            // the drawer follows the finger down and fades a little while being pulled
+            .graphicsLayer {
+                translationY = pullToClose.pull
+                alpha = 1f - (pullToClose.pull / size.height).coerceIn(0f, 0.5f)
+            }
             .safeDrawingPadding()
     ) {
         Box(Modifier.weight(1f)) {
@@ -613,6 +628,50 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
                 .background(SurfaceDim, RoundedCornerShape(28.dp))
                 .padding(horizontal = 20.dp, vertical = 14.dp),
         )
+    }
+}
+
+/**
+ * Pull-to-close for the drawer: once the list is at its top, a further downward drag pulls the whole drawer.
+ * Released past 96dp (or flung down) it closes; otherwise it springs back.
+ */
+private class PullToClose(
+    private val closeDistance: Float,
+    private val closeVelocity: Float,
+    private val onClose: () -> Unit,
+) : NestedScrollConnection {
+    var pull by mutableFloatStateOf(0f)
+        private set
+
+    // while pulled, an upward drag first takes the drawer back up before the list scrolls
+    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+        if (pull <= 0f || available.y >= 0f || source != NestedScrollSource.UserInput) return Offset.Zero
+        val used = maxOf(available.y, -pull)
+        pull += used
+        return Offset(0f, used)
+    }
+
+    // the list couldn't scroll further up, so the rest of a downward drag pulls the drawer
+    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+        if (available.y <= 0f || source != NestedScrollSource.UserInput) return Offset.Zero
+        pull += available.y
+        return Offset(0f, available.y)
+    }
+
+    override suspend fun onPreFling(available: Velocity): Velocity {
+        if (pull <= 0f) return Velocity.Zero
+        if (pull > closeDistance || available.y > closeVelocity) onClose()
+        else animate(pull, 0f) { value, _ -> pull = value }
+        return available // the fling belongs to the pull, not the list
+    }
+}
+
+@Composable
+private fun rememberPullToClose(onClose: () -> Unit): PullToClose {
+    val density = LocalDensity.current
+    val latestOnClose by rememberUpdatedState(onClose)
+    return remember(density) {
+        with(density) { PullToClose(96.dp.toPx(), 1000.dp.toPx(), onClose = { latestOnClose() }) }
     }
 }
 

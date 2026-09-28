@@ -67,6 +67,7 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 ## Cara Pakai
 - **Swipe up** di home: buka app drawer (tap search untuk mengetik, Enter = buka hasil pertama)
 - **Swipe down** di home: buka panel notifikasi
+- **Swipe down** di drawer saat list paling atas: tutup drawer (drawer ikut jari, tarik pendek = batal)
 - **Show: weather / events / screen time / gestures / music** di home: aktifkan info tersebut (tiap hint hilang setelah di-tap sekali; bisa diaktifkan lagi lewat App info)
 - **Tap jam** = alarm, **tap tanggal** = kalender, **tap cuaca** = prakiraan, **tap baterai** = pemakaian baterai, **tap acara** = buka acaranya
 - **Long press** app: Add to home / Rename / Hide / App info
