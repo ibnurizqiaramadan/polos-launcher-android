@@ -34,8 +34,16 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.EaseInCubic
+import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -174,10 +182,23 @@ class MainActivity : ComponentActivity() {
                 Surface(Modifier.fillMaxSize(), color = Color.Black, contentColor = TextPrimary) {
                     val menu: AppMenu = { app, close -> Menu(app, close) }
                     BackHandler { drawerOpen = false } // home screen: back never leaves the launcher
-                    if (drawerOpen) {
-                        AppList(apps, hidden, onOpen = ::open, menu = menu)
-                    } else {
-                        HomeScreen(menu)
+                    AnimatedContent(
+                        targetState = drawerOpen,
+                        transitionSpec = {
+                            if (targetState) {
+                                // drawer rises from below (where the swipe came from) while home fades back
+                                (slideInVertically(tween(250, easing = EaseOutCubic)) { it / 8 } + fadeIn(tween(250))) togetherWith
+                                    fadeOut(tween(150))
+                            } else {
+                                // leaves a bit faster than it came, staying on top while it slides away
+                                (fadeIn(tween(200)) togetherWith
+                                    (slideOutVertically(tween(180, easing = EaseInCubic)) { it / 8 } + fadeOut(tween(180))))
+                                    .apply { targetContentZIndex = -1f }
+                            }
+                        },
+                        label = "drawer",
+                    ) { open ->
+                        if (open) AppList(apps, hidden, onOpen = ::open, menu = menu) else HomeScreen(menu)
                     }
                     renaming?.let { app ->
                         RenameDialog(app, onRename = { rename(app, it); renaming = null }, onDismiss = { renaming = null })
