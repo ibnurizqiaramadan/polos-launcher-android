@@ -149,6 +149,7 @@ class MainActivity : ComponentActivity() {
     private var favorites by mutableStateOf(emptyList<String>()) // app keys, in display order
     private var hidden by mutableStateOf(emptySet<String>())
     private var renaming by mutableStateOf<App?>(null)
+    private var explainGestures by mutableStateOf(false)
     private var drawerOpen by mutableStateOf(false)
     private var weather by mutableStateOf<String?>(null)
     private var weatherFetchedAt = 0L
@@ -177,6 +178,15 @@ class MainActivity : ComponentActivity() {
                     }
                     renaming?.let { app ->
                         RenameDialog(app, onRename = { rename(app, it); renaming = null }, onDismiss = { renaming = null })
+                    }
+                    if (explainGestures) {
+                        GesturesDialog(
+                            onContinue = {
+                                explainGestures = false
+                                launch(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                            },
+                            onDismiss = { explainGestures = false },
+                        )
                     }
                 }
             }
@@ -221,6 +231,8 @@ class MainActivity : ComponentActivity() {
                 runCatching { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.fromParts("package", packageName, null))) }
                     .onFailure { launch(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
             }
+            // only offered on 3-button phones; with system gestures it would just double up
+            if (usesButtonNavigation()) hint("gestures", "gestures", gesturesEnabled()) { explainGestures = true }
             hint("music", "media", hasNotificationAccess()) {
                 launch(
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -531,7 +543,7 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
                     firstIndex,
                     shown.lastIndex,
                     listState,
-                    Modifier.align(Alignment.TopEnd).fillMaxHeight().padding(end = 8.dp),
+                    Modifier.align(Alignment.TopEnd).fillMaxHeight().padding(end = 16.dp), // clear of the edge gesture strip
                 )
             }
         }
@@ -709,3 +721,22 @@ private fun RenameDialog(app: App, onRename: (String) -> Unit, onDismiss: () -> 
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
+
+/** Accessibility needs a clear disclosure before sending the user to turn it on. */
+@Composable
+private fun GesturesDialog(onContinue: () -> Unit, onDismiss: () -> Unit) = AlertDialog(
+    onDismissRequest = onDismiss,
+    title = { Text("Navigation gestures") },
+    text = {
+        Text(
+            "Swipe in from the left or right edge to go Back, swipe up from the bottom centre to go Home, " +
+                "swipe up and hold for Recents.\n\n" +
+                "This uses Android's Accessibility service only to trigger those three actions. " +
+                "It doesn't read or collect anything on your screen.\n\n" +
+                "Next, turn on \"Minimalist Launcher gestures\" in Accessibility settings. If Android says it's a " +
+                "restricted setting, first open App info > \u22ee > Allow restricted settings."
+        )
+    },
+    confirmButton = { TextButton(onClick = onContinue) { Text("Open settings") } },
+    dismissButton = { TextButton(onClick = onDismiss) { Text("Not now") } },
+)

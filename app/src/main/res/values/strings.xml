@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="gesture_service_description">Swipe in from the left or right edge to go Back, swipe up from the bottom centre to go Home, swipe up and hold for Recents. Only performs these navigation actions; it does not read or collect anything on your screen.</string>
+</resources>

@@ -61,12 +61,13 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 - [x] Screen time hari ini (Usage access)
 - [x] Shortcut Phone & Camera di pojok bawah home
 - [x] Now playing + kontrol Prev/Play-Pause/Next (butuh akses notifikasi)
+- [x] Gesture navigasi untuk HP 3 tombol (Accessibility): swipe pinggir = Back, swipe up bawah = Home, swipe up + tahan = Recents
 - [x] Opsi sembunyikan aplikasi (Hide apps) & rename label app
 
 ## Cara Pakai
 - **Swipe up** di home: buka app drawer (tap search untuk mengetik, Enter = buka hasil pertama)
 - **Swipe down** di home: buka panel notifikasi
-- **Tap to show weather / events / screen time / music** di home: aktifkan info tersebut (tiap hint hilang setelah di-tap sekali; bisa diaktifkan lagi lewat App info)
+- **Show: weather / events / screen time / gestures / music** di home: aktifkan info tersebut (tiap hint hilang setelah di-tap sekali; bisa diaktifkan lagi lewat App info)
 - **Tap jam** = alarm, **tap tanggal** = kalender, **tap cuaca** = prakiraan, **tap baterai** = pemakaian baterai, **tap acara** = buka acaranya
 - **Long press** app: Add to home / Rename / Hide / App info
 - **Drag huruf** di kanan drawer (# A–Z penuh setinggi list): lompat ke huruf itu; huruf redup = tidak ada app, lompat ke huruf berikutnya
