@@ -60,12 +60,13 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 - [x] Alarm berikutnya & acara kalender berikutnya (24 jam ke depan)
 - [x] Screen time hari ini (Usage access)
 - [x] Shortcut Phone & Camera di pojok bawah home
+- [x] Now playing + kontrol Prev/Play-Pause/Next (butuh akses notifikasi)
 - [x] Opsi sembunyikan aplikasi (Hide apps) & rename label app
 
 ## Cara Pakai
 - **Swipe up** di home: buka app drawer (keyboard search langsung muncul, Enter = buka hasil pertama)
 - **Swipe down** di home: buka panel notifikasi
-- **Tap to show weather / events / screen time** di home: aktifkan info tersebut (tiap hint hilang setelah di-tap sekali; bisa diaktifkan lagi lewat App info)
+- **Tap to show weather / events / screen time / music** di home: aktifkan info tersebut (tiap hint hilang setelah di-tap sekali; bisa diaktifkan lagi lewat App info)
 - **Tap jam** = alarm, **tap tanggal** = kalender, **tap cuaca** = prakiraan, **tap baterai** = pemakaian baterai, **tap acara** = buka acaranya
 - Search bar ada di bawah drawer, tepat di atas keyboard
 - **Long press** app: Add to home / Rename / Hide / App info

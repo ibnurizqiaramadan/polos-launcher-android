@@ -5,6 +5,7 @@ import android.app.AlarmManager
 import android.app.SearchManager
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
@@ -15,6 +16,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color.TRANSPARENT
 import android.net.Uri
 import android.os.BatteryManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.AlarmClock
@@ -38,6 +40,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -130,6 +133,7 @@ class MainActivity : ComponentActivity() {
     private var nextAlarm by mutableStateOf<Long?>(null)
     private var nextEvent by mutableStateOf<CalendarEvent?>(null)
     private var screenTime by mutableStateOf<Long?>(null)
+    private val media by lazy { MediaWatcher(this) }
     private var hints by mutableStateOf(emptyList<Pair<String, () -> Unit>>()) // setup hints: text to on-tap
     // the dialog pausing us means onResume re-reads every permission, so the result itself is unused
     private val requestPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -153,6 +157,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (hasNotificationAccess()) media.start()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        media.stop()
     }
 
     // ponytail: reload on every resume catches installs/uninstalls; switch to LauncherApps.Callback if it gets slow
@@ -182,6 +196,18 @@ class MainActivity : ComponentActivity() {
                 // straight to this app's toggle where supported, else the full list
                 runCatching { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.fromParts("package", packageName, null))) }
                     .onFailure { launch(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+            }
+            hint("Tap to show music", "media", hasNotificationAccess()) {
+                launch(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
+                            Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                            ComponentName(this@MainActivity, MediaListener::class.java).flattenToString(),
+                        )
+                    } else {
+                        Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                    }
+                )
             }
         }
     }
@@ -276,6 +302,27 @@ class MainActivity : ComponentActivity() {
             favorites.mapNotNull { key -> apps.find { it.key == key } }
                 .forEach { AppItem(it, 28.sp, ::open, menu, Modifier.align(Alignment.End)) }
             Spacer(Modifier.weight(1f))
+            media.nowPlaying?.let { track ->
+                Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = listOf(track.title, track.artist).filter { it.isNotEmpty() }.joinToString("  ·  "),
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .clickable { media.controller?.packageName?.let(packageManager::getLaunchIntentForPackage)?.let(::launch) }
+                            .padding(8.dp),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        SubText("Prev") { media.controller?.transportControls?.skipToPrevious() }
+                        SubText(if (track.playing) "Pause" else "Play") {
+                            media.controller?.transportControls?.run { if (track.playing) pause() else play() }
+                        }
+                        SubText("Next") { media.controller?.transportControls?.skipToNext() }
+                    }
+                }
+            }
             Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 SubText("Phone", Modifier.align(Alignment.CenterStart)) { launch(Intent(Intent.ACTION_DIAL)) }
                 screenTime?.let { SubText("Screen time ${formatDuration(it)}", Modifier.align(Alignment.Center)) }

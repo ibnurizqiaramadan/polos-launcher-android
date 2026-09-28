@@ -36,5 +36,16 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- now playing: notification access unlocks media sessions; notifications themselves are ignored -->
+        <service
+            android:name=".MediaListener"
+            android:exported="true"
+            android:label="Minimalist Launcher music"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
