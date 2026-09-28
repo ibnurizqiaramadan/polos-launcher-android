@@ -37,6 +37,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.EaseInCubic
 import androidx.compose.animation.core.EaseOutCubic
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -684,8 +685,9 @@ private fun section(label: String) = label.firstOrNull()?.uppercaseChar()?.takeI
 private val WaveShift = 40.dp
 
 /**
- * Letter index spread over the full list height: drag to jump, letters near the finger bulge left like a wave.
- * Letters with no apps are dimmed but still land on the next letter that has some.
+ * Letter index spread over the full list height: drag to jump.
+ * Letters near the finger bulge left, grow and brighten on a smooth falloff; letters with no apps
+ * are dimmed but still land on the next letter that has some.
  */
 @Composable
 private fun AlphabetScroller(firstIndex: Map<Char, Int>, lastIndex: Int, listState: LazyListState, modifier: Modifier) {
@@ -694,15 +696,21 @@ private fun AlphabetScroller(firstIndex: Map<Char, Int>, lastIndex: Int, listSta
     var letterPx by remember { mutableFloatStateOf(1f) } // height / letters, from the laid-out column
     var touching by remember { mutableStateOf(false) }
     var touchY by remember { mutableFloatStateOf(0f) } // finger y inside the index; kept after lift so the wave fades out in place
-    // letters follow the finger with no lag; only the wave's strength eases in and out
-    val strength by animateFloatAsState(if (touching) 1f else 0f, tween(if (touching) 120 else 200), label = "wave")
-    // recompose only when the letter under the finger changes, not on every move
+    // letters follow the finger with no lag; only the effect's strength eases in and out
+    val strength by animateFloatAsState(
+        targetValue = if (touching) 1f else 0f,
+        animationSpec = tween(if (touching) 150 else 220, easing = FastOutSlowInEasing),
+        label = "wave",
+    )
+    // changes only when the finger crosses into another letter
     val active by remember {
         derivedStateOf { if (touching) (touchY / letterPx).toInt().coerceIn(IndexLetters.indices) else null }
     }
+    var bubbleLetter by remember { mutableIntStateOf(0) } // stays put while the bubble fades out
 
     LaunchedEffect(active) {
         val index = active ?: return@LaunchedEffect
+        bubbleLetter = index
         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         val target = IndexLetters.drop(index).firstNotNullOfOrNull { firstIndex[it] } ?: lastIndex
         listState.scrollToItem(target)
@@ -729,39 +737,41 @@ private fun AlphabetScroller(firstIndex: Map<Char, Int>, lastIndex: Int, listSta
                 }
         ) {
             IndexLetters.forEachIndexed { i, letter ->
+                val restAlpha = if (letter in firstIndex) 0.55f else 0.22f // dim = no apps under this letter
                 Box(
                     Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        // read at placement: moving the finger re-places letters without recomposing them
-                        .offset {
+                        // all read in the draw phase: dragging never recomposes the letters
+                        .graphicsLayer {
                             val distance = i + 0.5f - touchY / letterPx // in letters
-                            IntOffset(-(waveShiftPx * strength * exp(-distance * distance / 18f)).roundToInt(), 0)
+                            val wide = strength * exp(-distance * distance / 18f) // the wave
+                            val near = strength * exp(-distance * distance / 3f) // the few letters under the finger
+                            translationX = -waveShiftPx * wide
+                            scaleX = 1f + 0.5f * near
+                            scaleY = 1f + 0.5f * near
+                            alpha = restAlpha + (1f - restAlpha) * near
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = letter.toString(),
-                        color = when {
-                            i == active -> TextPrimary
-                            letter in firstIndex -> TextMuted
-                            else -> TextMuted.copy(alpha = 0.4f) // no apps under this letter
-                        },
-                        fontSize = 13.sp,
-                    )
+                    Text(letter.toString(), color = TextPrimary, fontSize = 13.sp)
                 }
             }
         }
-        active?.let { index ->
-            Box(
-                Modifier
-                    .offset { IntOffset((-96).dp.roundToPx(), (8.dp.toPx() + touchY - 28.dp.toPx()).roundToInt()) }
-                    .size(56.dp)
-                    .background(Color.White, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(IndexLetters[index].toString(), color = Color.Black, fontSize = 28.sp)
-            }
+        // always composed; strength fades and scales it in and out
+        Box(
+            Modifier
+                .offset { IntOffset((-96).dp.roundToPx(), (8.dp.toPx() + touchY - 28.dp.toPx()).roundToInt()) }
+                .graphicsLayer {
+                    alpha = strength
+                    scaleX = 0.6f + 0.4f * strength
+                    scaleY = 0.6f + 0.4f * strength
+                }
+                .size(56.dp)
+                .background(Color.White, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(IndexLetters[bubbleLetter].toString(), color = Color.Black, fontSize = 28.sp)
         }
     }
 }
