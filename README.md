@@ -69,7 +69,7 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 - **Tap to show weather / events / screen time / music** di home: aktifkan info tersebut (tiap hint hilang setelah di-tap sekali; bisa diaktifkan lagi lewat App info)
 - **Tap jam** = alarm, **tap tanggal** = kalender, **tap cuaca** = prakiraan, **tap baterai** = pemakaian baterai, **tap acara** = buka acaranya
 - **Long press** app: Add to home / Rename / Hide / App info
-- **Drag huruf** di kanan drawer: lompat ke huruf itu (efek wave + bubble)
+- **Drag huruf** di kanan drawer (# A–Z penuh setinggi list): lompat ke huruf itu; huruf redup = tidak ada app, lompat ke huruf berikutnya
 - App tersembunyi ada di "Hidden apps (n)" paling bawah drawer
 - Build & install: `./gradlew installDebug`, lalu tekan Home dan pilih "Minimalist Launcher"
 

@@ -45,13 +45,17 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -96,10 +100,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -485,6 +489,7 @@ private fun batteryLevel(): Int {
     return level
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit, menu: AppMenu) {
     var query by remember { mutableStateOf("") }
@@ -493,8 +498,8 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
     val shown = apps.filter { (it.key in hidden) == showHidden && it.label.contains(query, ignoreCase = true) }
     val hiddenCount = apps.count { it.key in hidden }
     val listState = rememberLazyListState()
-    // first list index of each letter, e.g. [('C', 0), ('D', 5), ...]
-    val sections = shown.withIndex().distinctBy { section(it.value.label) }.map { section(it.value.label) to it.index }
+    // first list index of each letter present, e.g. {'C'=0, 'D'=5, ...}
+    val firstIndex = HashMap<Char, Int>().apply { shown.forEachIndexed { i, app -> putIfAbsent(section(app.label), i) } }
 
     Column(
         Modifier
@@ -520,8 +525,14 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
                     )
                 }
             }
-            if (sections.isNotEmpty()) {
-                AlphabetScroller(sections, listState, Modifier.align(Alignment.TopEnd).padding(end = 8.dp))
+            // hidden while typing: squeezed above the keyboard it'd be too cramped to hit, and results are short anyway
+            if (shown.isNotEmpty() && !WindowInsets.isImeVisible) {
+                AlphabetScroller(
+                    firstIndex,
+                    shown.lastIndex,
+                    listState,
+                    Modifier.align(Alignment.TopEnd).fillMaxHeight().padding(end = 8.dp),
+                )
             }
         }
         // bottom, right above the keyboard: thumb reach
@@ -553,41 +564,48 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
     }
 }
 
-private fun section(label: String) = label.firstOrNull()?.uppercaseChar()?.takeIf { it.isLetter() } ?: '#'
+/** Always the full index so every letter keeps its spot: muscle memory beats a compact list. */
+private val IndexLetters = listOf('#') + ('A'..'Z')
 
-private val LetterHeight = 20.dp
+// digits, symbols and non-Latin scripts all land in '#'
+private fun section(label: String) = label.firstOrNull()?.uppercaseChar()?.takeIf { it in 'A'..'Z' } ?: '#'
+
 private val WaveShift = 40.dp
 
-/** Letter index on the right: drag to jump, letters near the finger bulge left like a wave. */
+/**
+ * Letter index spread over the full list height: drag to jump, letters near the finger bulge left like a wave.
+ * Letters with no apps are dimmed but still land on the next letter that has some.
+ */
 @Composable
-private fun AlphabetScroller(sections: List<Pair<Char, Int>>, listState: LazyListState, modifier: Modifier) {
+private fun AlphabetScroller(firstIndex: Map<Char, Int>, lastIndex: Int, listState: LazyListState, modifier: Modifier) {
     val haptic = LocalHapticFeedback.current
-    val keyboard = LocalSoftwareKeyboardController.current
-    val letterPx = with(LocalDensity.current) { LetterHeight.toPx() }
     val waveShiftPx = with(LocalDensity.current) { WaveShift.toPx() }
+    var letterPx by remember { mutableFloatStateOf(1f) } // height / letters, from the laid-out column
     var touching by remember { mutableStateOf(false) }
-    var touchY by remember { mutableFloatStateOf(0f) } // finger y inside the scroller; kept after lift so the wave fades out in place
+    var touchY by remember { mutableFloatStateOf(0f) } // finger y inside the index; kept after lift so the wave fades out in place
     // letters follow the finger with no lag; only the wave's strength eases in and out
     val strength by animateFloatAsState(if (touching) 1f else 0f, tween(if (touching) 120 else 200), label = "wave")
     // recompose only when the letter under the finger changes, not on every move
-    val active by remember(sections) {
-        derivedStateOf { if (touching) (touchY / letterPx).toInt().coerceIn(sections.indices) else null }
+    val active by remember {
+        derivedStateOf { if (touching) (touchY / letterPx).toInt().coerceIn(IndexLetters.indices) else null }
     }
 
     LaunchedEffect(active) {
         val index = active ?: return@LaunchedEffect
         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        listState.scrollToItem(sections[index].second)
+        val target = IndexLetters.drop(index).firstNotNullOfOrNull { firstIndex[it] } ?: lastIndex
+        listState.scrollToItem(target)
     }
 
     Box(modifier.width(48.dp)) {
         Column(
             Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
+                .padding(vertical = 8.dp)
+                .onSizeChanged { letterPx = it.height / IndexLetters.size.toFloat() }
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         val down = awaitFirstDown()
-                        keyboard?.hide() // free up the whole list
                         touchY = down.position.y
                         touching = true
                         do {
@@ -599,11 +617,11 @@ private fun AlphabetScroller(sections: List<Pair<Char, Int>>, listState: LazyLis
                     }
                 }
         ) {
-            sections.forEachIndexed { i, (letter, _) ->
+            IndexLetters.forEachIndexed { i, letter ->
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(LetterHeight)
+                        .weight(1f)
                         // read at placement: moving the finger re-places letters without recomposing them
                         .offset {
                             val distance = i + 0.5f - touchY / letterPx // in letters
@@ -611,19 +629,27 @@ private fun AlphabetScroller(sections: List<Pair<Char, Int>>, listState: LazyLis
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(letter.toString(), color = if (i == active) TextPrimary else TextMuted, fontSize = 13.sp)
+                    Text(
+                        text = letter.toString(),
+                        color = when {
+                            i == active -> TextPrimary
+                            letter in firstIndex -> TextMuted
+                            else -> TextMuted.copy(alpha = 0.4f) // no apps under this letter
+                        },
+                        fontSize = 13.sp,
+                    )
                 }
             }
         }
         active?.let { index ->
             Box(
                 Modifier
-                    .offset { IntOffset((-96).dp.roundToPx(), (touchY - 28.dp.toPx()).roundToInt()) }
+                    .offset { IntOffset((-96).dp.roundToPx(), (8.dp.toPx() + touchY - 28.dp.toPx()).roundToInt()) }
                     .size(56.dp)
                     .background(Color.White, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(sections[index].first.toString(), color = Color.Black, fontSize = 28.sp)
+                Text(IndexLetters[index].toString(), color = Color.Black, fontSize = 28.sp)
             }
         }
     }
