@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.minimalist.launcher"
+    namespace = "id.ibnurizqia.launcher"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.minimalist.launcher"
+        applicationId = "id.ibnurizqia.launcher"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

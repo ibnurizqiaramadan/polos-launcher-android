@@ -1,4 +1,4 @@
-package com.minimalist.launcher
+package id.ibnurizqia.launcher
 
 import android.content.ComponentName
 import android.content.Context
