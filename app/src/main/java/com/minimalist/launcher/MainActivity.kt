@@ -1,6 +1,7 @@
 package com.minimalist.launcher
 
 import android.Manifest
+import android.app.AlarmManager
 import android.app.SearchManager
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
@@ -18,6 +19,7 @@ import android.os.Process
 import android.provider.AlarmClock
 import android.provider.CalendarContract
 import android.provider.Settings
+import android.text.format.DateFormat
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -114,6 +116,7 @@ class MainActivity : ComponentActivity() {
     private var weather by mutableStateOf<String?>(null)
     private var weatherPrompt by mutableStateOf(false) // location is only requested after the user taps
     private var weatherFetchedAt = 0L
+    private var nextAlarm by mutableStateOf<Long?>(null)
     private val requestLocation = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!granted) prefs.edit { putBoolean("weather_declined", true) }
         refreshWeather()
@@ -145,6 +148,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         loadApps()
         refreshWeather()
+        nextAlarm = getSystemService(AlarmManager::class.java).nextAlarmClock?.triggerTime
     }
 
     // ponytail: 30 min in-memory throttle; persist the last result if cold starts without network matter
@@ -207,15 +211,13 @@ class MainActivity : ComponentActivity() {
                     }
                     InfoText("${batteryLevel()}%") { launch(Intent(Intent.ACTION_POWER_USAGE_SUMMARY)) }
                 }
+                nextAlarm?.let { time ->
+                    // day name only when it's not within the next 24h
+                    val pattern = if (time - System.currentTimeMillis() < 24 * 3600_000) "HH:mm" else "EEE HH:mm"
+                    SubText("Alarm ${DateFormat.format(pattern, time)}") { launch(Intent(AlarmClock.ACTION_SHOW_ALARMS)) }
+                }
                 if (weatherPrompt) {
-                    Text(
-                        text = "Tap to show weather",
-                        color = Color.Gray,
-                        fontSize = 14.sp,
-                        modifier = Modifier
-                            .clickable { requestLocation.launch(Manifest.permission.ACCESS_COARSE_LOCATION) }
-                            .padding(8.dp),
-                    )
+                    SubText("Tap to show weather") { requestLocation.launch(Manifest.permission.ACCESS_COARSE_LOCATION) }
                 }
             }
             Spacer(Modifier.weight(1f))
@@ -305,6 +307,16 @@ private fun InfoText(text: String, onClick: (() -> Unit)? = null) = Text(
     color = Color.White,
     fontSize = 18.sp,
     modifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier,
+)
+
+@Composable
+private fun SubText(text: String, onClick: () -> Unit) = Text(
+    text = text,
+    color = Color.Gray,
+    fontSize = 14.sp,
+    modifier = Modifier
+        .clickable(onClick = onClick)
+        .padding(horizontal = 8.dp, vertical = 4.dp),
 )
 
 @Composable
