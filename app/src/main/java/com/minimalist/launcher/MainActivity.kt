@@ -128,6 +128,7 @@ class MainActivity : ComponentActivity() {
     private var weatherFetchedAt = 0L
     private var nextAlarm by mutableStateOf<Long?>(null)
     private var nextEvent by mutableStateOf<CalendarEvent?>(null)
+    private var screenTime by mutableStateOf<Long?>(null)
     private var hints by mutableStateOf(emptyList<Pair<String, () -> Unit>>()) // setup hints: text to on-tap
     // the dialog pausing us means onResume re-reads every permission, so the result itself is unused
     private val requestPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -161,6 +162,7 @@ class MainActivity : ComponentActivity() {
         refreshWeather()
         nextAlarm = getSystemService(AlarmManager::class.java).nextAlarmClock?.triggerTime
         if (granted(CALENDAR)) lifecycleScope.launch { nextEvent = withContext(Dispatchers.IO) { queryNextEvent() } }
+        if (hasUsageAccess()) lifecycleScope.launch { screenTime = withContext(Dispatchers.Default) { screenTimeToday() } }
     }
 
     private fun granted(permission: String) = checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
@@ -175,6 +177,11 @@ class MainActivity : ComponentActivity() {
             }
             hint("Tap to show weather", LOCATION, granted(LOCATION)) { requestPermission.launch(LOCATION) }
             hint("Tap to show events", CALENDAR, granted(CALENDAR)) { requestPermission.launch(CALENDAR) }
+            hint("Tap to show screen time", "usage", hasUsageAccess()) {
+                // straight to this app's toggle where supported, else the full list
+                runCatching { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.fromParts("package", packageName, null))) }
+                    .onFailure { launch(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+            }
         }
     }
 
@@ -262,12 +269,13 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 nextAlarm?.let { SubText("Alarm ${timeText(it)}") { launch(Intent(AlarmClock.ACTION_SHOW_ALARMS)) } }
-                hints.forEach { (text, onTap) -> SubText(text, onTap) }
+                hints.forEach { (text, onTap) -> SubText(text, onClick = onTap) }
             }
             Spacer(Modifier.weight(1f))
             favorites.mapNotNull { key -> apps.find { it.key == key } }
                 .forEach { AppItem(it, 28.sp, ::open, menu, Modifier.align(Alignment.End)) }
             Spacer(Modifier.weight(1f))
+            screenTime?.let { SubText("Screen time ${formatDuration(it)}", Modifier.align(Alignment.CenterHorizontally)) }
         }
     }
 
@@ -357,14 +365,14 @@ private fun InfoText(text: String, onClick: (() -> Unit)? = null) = Text(
 private fun timeText(millis: Long) = DateFormat.format(if (DateUtils.isToday(millis)) "HH:mm" else "EEE HH:mm", millis)
 
 @Composable
-private fun SubText(text: String, onClick: () -> Unit) = Text(
+private fun SubText(text: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) = Text(
     text = text,
     color = Color.Gray,
     fontSize = 14.sp,
     maxLines = 1,
     overflow = TextOverflow.Ellipsis,
-    modifier = Modifier
-        .clickable(onClick = onClick)
+    modifier = modifier
+        .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
         .padding(horizontal = 8.dp, vertical = 4.dp),
 )
 
