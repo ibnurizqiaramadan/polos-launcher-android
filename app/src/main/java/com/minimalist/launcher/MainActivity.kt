@@ -1,10 +1,14 @@
 package com.minimalist.launcher
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.LauncherActivityInfo
 import android.content.pm.LauncherApps
 import android.graphics.Color.TRANSPARENT
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
@@ -16,7 +20,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,8 +32,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -40,10 +45,13 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 
 class App(val label: String, val info: LauncherActivityInfo)
 
@@ -104,7 +112,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun HomeScreen(onSwipeUp: () -> Unit, onSwipeDown: () -> Unit) {
-    Box(
+    Column(
         Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
@@ -121,7 +129,42 @@ private fun HomeScreen(onSwipeUp: () -> Unit, onSwipeDown: () -> Unit) {
                     onVerticalDrag = { _, dy -> drag += dy },
                 )
             }
-    )
+            .safeDrawingPadding()
+            .padding(24.dp)
+    ) {
+        // Platform TextClock follows the 24h setting, time zone changes and wake-from-sleep on its own
+        TextClock(formatPattern = null, sizeSp = 64f) // null = system h:mm / HH:mm
+        TextClock(formatPattern = "EEEE, d MMMM", sizeSp = 18f)
+        Text("${batteryLevel()}%", color = Color.White, fontSize = 18.sp)
+    }
+}
+
+@Composable
+private fun TextClock(formatPattern: String?, sizeSp: Float) = AndroidView(
+    factory = {
+        android.widget.TextClock(it).apply {
+            formatPattern?.let { f -> format12Hour = f; format24Hour = f }
+            textSize = sizeSp
+            setTextColor(android.graphics.Color.WHITE)
+        }
+    }
+)
+
+@Composable
+private fun batteryLevel(): Int {
+    val context = LocalContext.current
+    var level by remember { mutableIntStateOf(0) }
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context, i: Intent) {
+                level = i.getIntExtra(BatteryManager.EXTRA_LEVEL, 0) * 100 / i.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
+            }
+        }
+        // sticky broadcast: current level arrives right away
+        ContextCompat.registerReceiver(context, receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
+        onDispose { context.unregisterReceiver(receiver) }
+    }
+    return level
 }
 
 @Composable
