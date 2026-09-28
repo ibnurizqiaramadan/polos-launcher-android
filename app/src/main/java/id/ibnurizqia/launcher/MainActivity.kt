@@ -38,8 +38,10 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.EaseInCubic
 import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -562,6 +564,10 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
     // first list index of each letter present, e.g. {'C'=0, 'D'=5, ...}
     val firstIndex = HashMap<Char, Int>().apply { shown.forEachIndexed { i, app -> putIfAbsent(section(app.label), i) } }
     val pullToClose = rememberPullToClose(onClose)
+    // letter of the topmost visible app; only changes when scrolling crosses into another section
+    val currentLetter by remember(shown) {
+        derivedStateOf { shown.getOrNull(listState.firstVisibleItemIndex)?.let { IndexLetters.indexOf(section(it.label)) } ?: -1 }
+    }
 
     Column(
         Modifier
@@ -598,6 +604,7 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
                 AlphabetScroller(
                     firstIndex,
                     shown.lastIndex,
+                    currentLetter,
                     listState,
                     Modifier.align(Alignment.TopEnd).fillMaxHeight().padding(end = 16.dp), // clear of the edge gesture strip
                 )
@@ -690,7 +697,13 @@ private val WaveShift = 40.dp
  * are dimmed but still land on the next letter that has some.
  */
 @Composable
-private fun AlphabetScroller(firstIndex: Map<Char, Int>, lastIndex: Int, listState: LazyListState, modifier: Modifier) {
+private fun AlphabetScroller(
+    firstIndex: Map<Char, Int>,
+    lastIndex: Int,
+    current: Int, // index into IndexLetters of the section at the top of the list, -1 if none
+    listState: LazyListState,
+    modifier: Modifier,
+) {
     val haptic = LocalHapticFeedback.current
     val waveShiftPx = with(LocalDensity.current) { WaveShift.toPx() }
     var letterPx by remember { mutableFloatStateOf(1f) } // height / letters, from the laid-out column
@@ -707,6 +720,12 @@ private fun AlphabetScroller(firstIndex: Map<Char, Int>, lastIndex: Int, listSta
         derivedStateOf { if (touching) (touchY / letterPx).toInt().coerceIn(IndexLetters.indices) else null }
     }
     var bubbleLetter by remember { mutableIntStateOf(0) } // stays put while the bubble fades out
+    // the "you are here" mark glides between letters as the list scrolls instead of jumping
+    val currentPos by animateFloatAsState(
+        targetValue = current.toFloat(),
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "current letter",
+    )
 
     LaunchedEffect(active) {
         val index = active ?: return@LaunchedEffect
@@ -747,10 +766,12 @@ private fun AlphabetScroller(firstIndex: Map<Char, Int>, lastIndex: Int, listSta
                             val distance = i + 0.5f - touchY / letterPx // in letters
                             val wide = strength * exp(-distance * distance / 18f) // the wave
                             val near = strength * exp(-distance * distance / 3f) // the few letters under the finger
+                            // where the scrolled list is; steps aside while the finger drives the index
+                            val here = if (current < 0) 0f else (1f - strength) * exp(-(i - currentPos).let { it * it } / 0.6f)
                             translationX = -waveShiftPx * wide
-                            scaleX = 1f + 0.5f * near
-                            scaleY = 1f + 0.5f * near
-                            alpha = restAlpha + (1f - restAlpha) * near
+                            scaleX = 1f + 0.5f * near + 0.2f * here
+                            scaleY = scaleX
+                            alpha = restAlpha + (1f - restAlpha) * maxOf(near, here)
                         },
                     contentAlignment = Alignment.Center,
                 ) {
