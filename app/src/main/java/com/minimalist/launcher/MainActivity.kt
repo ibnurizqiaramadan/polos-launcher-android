@@ -14,6 +14,7 @@ import android.content.pm.LauncherActivityInfo
 import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.graphics.Color.TRANSPARENT
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
@@ -43,6 +44,8 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -58,14 +61,19 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
@@ -91,6 +99,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
@@ -109,6 +118,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val MAX_FAVORITES = 6
+
+// OLED palette: true black, three text emphasis levels (all pass WCAG AA on black)
+private val TextPrimary = Color.White
+private val TextSecondary = Color(0xFFBDBDBD) // 11:1
+private val TextMuted = Color(0xFF8C8C8C) // 6.2:1
+private val SurfaceDim = Color(0xFF121212) // barely-lit fill for the search field
 
 /** Long-press menu content for one app; call `close` to dismiss it. */
 private typealias AppMenu = @Composable (app: App, close: () -> Unit) -> Unit
@@ -145,15 +160,17 @@ class MainActivity : ComponentActivity() {
         hidden = prefs.getStringSet("hidden", emptySet())!!.toSet()
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
-                val menu: AppMenu = { app, close -> Menu(app, close) }
-                BackHandler { drawerOpen = false } // home screen: back never leaves the launcher
-                if (drawerOpen) {
-                    AppList(apps, hidden, onOpen = ::open, menu = menu)
-                } else {
-                    HomeScreen(menu)
-                }
-                renaming?.let { app ->
-                    RenameDialog(app, onRename = { rename(app, it); renaming = null }, onDismiss = { renaming = null })
+                Surface(Modifier.fillMaxSize(), color = Color.Black, contentColor = TextPrimary) {
+                    val menu: AppMenu = { app, close -> Menu(app, close) }
+                    BackHandler { drawerOpen = false } // home screen: back never leaves the launcher
+                    if (drawerOpen) {
+                        AppList(apps, hidden, onOpen = ::open, menu = menu)
+                    } else {
+                        HomeScreen(menu)
+                    }
+                    renaming?.let { app ->
+                        RenameDialog(app, onRename = { rename(app, it); renaming = null }, onDismiss = { renaming = null })
+                    }
                 }
             }
         }
@@ -190,14 +207,14 @@ class MainActivity : ComponentActivity() {
                     add(text to { prefs.edit { putBoolean("asked:$key", true) }; request() })
                 }
             }
-            hint("Tap to show weather", LOCATION, granted(LOCATION)) { requestPermission.launch(LOCATION) }
-            hint("Tap to show events", CALENDAR, granted(CALENDAR)) { requestPermission.launch(CALENDAR) }
-            hint("Tap to show screen time", "usage", hasUsageAccess()) {
+            hint("weather", LOCATION, granted(LOCATION)) { requestPermission.launch(LOCATION) }
+            hint("events", CALENDAR, granted(CALENDAR)) { requestPermission.launch(CALENDAR) }
+            hint("screen time", "usage", hasUsageAccess()) {
                 // straight to this app's toggle where supported, else the full list
                 runCatching { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.fromParts("package", packageName, null))) }
                     .onFailure { launch(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
             }
-            hint("Tap to show music", "media", hasNotificationAccess()) {
+            hint("music", "media", hasNotificationAccess()) {
                 launch(
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                         Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
@@ -273,19 +290,22 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 .safeDrawingPadding()
-                .padding(vertical = 24.dp)
+                .padding(top = 40.dp, bottom = 16.dp)
         ) {
+            // header steps down: time > date > conditions > agenda, each smaller and dimmer
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 // Platform TextClock handles minute ticks, time zone changes and wake-from-sleep on its own
-                TextClock("HH:mm", 64f, Modifier.clickable { launch(Intent(AlarmClock.ACTION_SHOW_ALARMS)) }) // always 24h
-                TextClock("EEEE, d MMMM", 18f, Modifier.clickable { launch(calendarAt(System.currentTimeMillis())) })
+                TextClock("HH:mm", 72f, light = true, modifier = Modifier.clickable { launch(Intent(AlarmClock.ACTION_SHOW_ALARMS)) })
+                TextClock("EEEE, d MMMM", 18f, modifier = Modifier.clickable { launch(calendarAt(System.currentTimeMillis())) })
+                Spacer(Modifier.height(4.dp))
                 Row {
                     weather?.let {
                         InfoText(it) { launch(Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, "weather")) }
-                        InfoText("  ·  ")
+                        InfoText("·")
                     }
                     InfoText("${batteryLevel()}%") { launch(Intent(Intent.ACTION_POWER_USAGE_SUMMARY)) }
                 }
+                Spacer(Modifier.height(12.dp))
                 nextEvent?.let { event ->
                     val time = if (event.begin <= System.currentTimeMillis()) "Now" else timeText(event.begin)
                     SubText("$time  ${event.title}") {
@@ -296,34 +316,41 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 nextAlarm?.let { SubText("Alarm ${timeText(it)}") { launch(Intent(AlarmClock.ACTION_SHOW_ALARMS)) } }
-                hints.forEach { (text, onTap) -> SubText(text, onClick = onTap) }
+                // all setup hints on one line instead of a stack of "Tap to show ..." rows
+                if (hints.isNotEmpty()) {
+                    FlowRow(horizontalArrangement = Arrangement.Center) {
+                        SubText("Show:")
+                        hints.forEach { (label, onTap) -> SubText(label, color = TextSecondary, onClick = onTap) }
+                    }
+                }
             }
             Spacer(Modifier.weight(1f))
+            // favorites sit low on the right: within thumb reach
             favorites.mapNotNull { key -> apps.find { it.key == key } }
-                .forEach { AppItem(it, 28.sp, ::open, menu, Modifier.align(Alignment.End)) }
-            Spacer(Modifier.weight(1f))
+                .forEach { AppItem(it, 28.sp, ::open, menu, Modifier.align(Alignment.End), FontWeight.Light) }
+            Spacer(Modifier.height(24.dp))
             media.nowPlaying?.let { track ->
                 Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = listOf(track.title, track.artist).filter { it.isNotEmpty() }.joinToString("  ·  "),
-                        color = Color.White,
                         fontSize = 16.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .clickable { media.controller?.packageName?.let(packageManager::getLaunchIntentForPackage)?.let(::launch) }
-                            .padding(8.dp),
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         SubText("Prev") { media.controller?.transportControls?.skipToPrevious() }
-                        SubText(if (track.playing) "Pause" else "Play") {
+                        SubText(if (track.playing) "Pause" else "Play", color = TextSecondary) {
                             media.controller?.transportControls?.run { if (track.playing) pause() else play() }
                         }
                         SubText("Next") { media.controller?.transportControls?.skipToNext() }
                     }
                 }
+                Spacer(Modifier.height(8.dp))
             }
-            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
                 SubText("Phone", Modifier.align(Alignment.CenterStart)) { launch(Intent(Intent.ACTION_DIAL)) }
                 screenTime?.let { SubText("Screen time ${formatDuration(it)}", Modifier.align(Alignment.Center)) }
                 SubText("Camera", Modifier.align(Alignment.CenterEnd)) {
@@ -395,7 +422,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun TextClock(formatPattern: String, sizeSp: Float, modifier: Modifier = Modifier) = AndroidView(
+private fun TextClock(formatPattern: String, sizeSp: Float, light: Boolean = false, modifier: Modifier = Modifier) = AndroidView(
     modifier = modifier,
     factory = {
         android.widget.TextClock(it).apply {
@@ -403,6 +430,9 @@ private fun TextClock(formatPattern: String, sizeSp: Float, modifier: Modifier =
             format24Hour = formatPattern
             textSize = sizeSp
             setTextColor(android.graphics.Color.WHITE)
+            typeface = Typeface.create(if (light) "sans-serif-light" else "sans-serif", Typeface.NORMAL)
+            fontFeatureSettings = "tnum" // fixed-width digits: the clock doesn't wobble every minute
+            includeFontPadding = false
         }
     }
 )
@@ -410,24 +440,29 @@ private fun TextClock(formatPattern: String, sizeSp: Float, modifier: Modifier =
 @Composable
 private fun InfoText(text: String, onClick: (() -> Unit)? = null) = Text(
     text = text,
-    color = Color.White,
-    fontSize = 18.sp,
-    modifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier,
+    color = TextSecondary,
+    fontSize = 16.sp,
+    modifier = (if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = 6.dp, vertical = 4.dp),
 )
 
 // "14:00" today, "Tue 09:00" otherwise
 private fun timeText(millis: Long) = DateFormat.format(if (DateUtils.isToday(millis)) "HH:mm" else "EEE HH:mm", millis)
 
 @Composable
-private fun SubText(text: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) = Text(
+private fun SubText(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = TextMuted,
+    onClick: (() -> Unit)? = null,
+) = Text(
     text = text,
-    color = Color.Gray,
+    color = color,
     fontSize = 14.sp,
     maxLines = 1,
     overflow = TextOverflow.Ellipsis,
     modifier = modifier
         .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-        .padding(horizontal = 8.dp, vertical = 4.dp),
+        .padding(horizontal = 12.dp, vertical = 8.dp), // tall enough to hit; Compose extends it to 48dp
 )
 
 @Composable
@@ -466,12 +501,16 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
             .safeDrawingPadding()
     ) {
         Box(Modifier.weight(1f)) {
-            LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(end = 48.dp)) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize().padding(end = 48.dp),
+                contentPadding = PaddingValues(vertical = 8.dp),
+            ) {
                 items(shown, key = { it.key }) { AppItem(it, 22.sp, onOpen, menu, Modifier.fillMaxWidth()) }
                 if (showHidden || hiddenCount > 0) item {
                     Text(
                         text = if (showHidden) "Back to apps" else "Hidden apps ($hiddenCount)",
-                        color = Color.Gray,
+                        color = TextMuted,
                         fontSize = 18.sp,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -489,18 +528,27 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
             value = query,
             onValueChange = { query = it },
             singleLine = true,
-            textStyle = TextStyle(color = Color.White, fontSize = 22.sp),
-            cursorBrush = SolidColor(Color.White),
+            textStyle = TextStyle(color = TextPrimary, fontSize = 18.sp),
+            cursorBrush = SolidColor(TextPrimary),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
             keyboardActions = KeyboardActions(onGo = { if (query.isNotBlank()) shown.firstOrNull()?.let(onOpen) }),
             decorationBox = { field ->
-                if (query.isEmpty()) Text("Search", color = Color.Gray, fontSize = 22.sp)
-                field()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Search, contentDescription = null, tint = TextMuted, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Box {
+                        if (query.isEmpty()) Text("Search apps", color = TextMuted, fontSize = 18.sp)
+                        field()
+                    }
+                }
             },
+            // pill so it reads as an input, not a label
             modifier = Modifier
                 .fillMaxWidth()
                 .focusRequester(focus)
-                .padding(horizontal = 24.dp, vertical = 16.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .background(SurfaceDim, RoundedCornerShape(28.dp))
+                .padding(horizontal = 20.dp, vertical = 14.dp),
         )
     }
 }
@@ -556,7 +604,7 @@ private fun AlphabetScroller(sections: List<Pair<Char, Int>>, listState: LazyLis
                         .offset(x = -shift),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(letter.toString(), color = if (i == active) Color.White else Color.Gray, fontSize = 13.sp)
+                    Text(letter.toString(), color = if (i == active) TextPrimary else TextMuted, fontSize = 13.sp)
                 }
             }
         }
@@ -576,14 +624,21 @@ private fun AlphabetScroller(sections: List<Pair<Char, Int>>, listState: LazyLis
 }
 
 @Composable
-private fun AppItem(app: App, fontSize: TextUnit, onOpen: (App) -> Unit, menu: AppMenu, modifier: Modifier = Modifier) {
+private fun AppItem(
+    app: App,
+    fontSize: TextUnit,
+    onOpen: (App) -> Unit,
+    menu: AppMenu,
+    modifier: Modifier = Modifier,
+    fontWeight: FontWeight? = null,
+) {
     var menuOpen by remember { mutableStateOf(false) }
     // propagateMinConstraints: a full-width row makes the whole row tappable; a wrapped one anchors the menu to the label
     Box(modifier, propagateMinConstraints = true) {
         Text(
             text = app.label,
-            color = Color.White,
             fontSize = fontSize,
+            fontWeight = fontWeight,
             modifier = Modifier
                 .combinedClickable(onClick = { onOpen(app) }, onLongClick = { menuOpen = true })
                 .padding(horizontal = 24.dp, vertical = 12.dp),
