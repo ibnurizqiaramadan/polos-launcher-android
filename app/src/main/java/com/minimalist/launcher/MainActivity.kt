@@ -285,23 +285,6 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
             .fillMaxSize()
             .safeDrawingPadding()
     ) {
-        BasicTextField(
-            value = query,
-            onValueChange = { query = it },
-            singleLine = true,
-            textStyle = TextStyle(color = Color.White, fontSize = 22.sp),
-            cursorBrush = SolidColor(Color.White),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-            keyboardActions = KeyboardActions(onGo = { if (query.isNotBlank()) shown.firstOrNull()?.let(onOpen) }),
-            decorationBox = { field ->
-                if (query.isEmpty()) Text("Search", color = Color.Gray, fontSize = 22.sp)
-                field()
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(focus)
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-        )
         Box(Modifier.weight(1f)) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(end = 48.dp)) {
                 items(shown, key = { it.key }) { AppItem(it, 22.sp, onOpen, menu) }
@@ -321,6 +304,24 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
                 AlphabetScroller(sections, listState, Modifier.align(Alignment.TopEnd).padding(end = 8.dp))
             }
         }
+        // bottom, right above the keyboard: thumb reach
+        BasicTextField(
+            value = query,
+            onValueChange = { query = it },
+            singleLine = true,
+            textStyle = TextStyle(color = Color.White, fontSize = 22.sp),
+            cursorBrush = SolidColor(Color.White),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+            keyboardActions = KeyboardActions(onGo = { if (query.isNotBlank()) shown.firstOrNull()?.let(onOpen) }),
+            decorationBox = { field ->
+                if (query.isEmpty()) Text("Search", color = Color.Gray, fontSize = 22.sp)
+                field()
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focus)
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+        )
     }
 }
 
