@@ -1,6 +1,8 @@
 package com.minimalist.launcher
 
 import android.Manifest
+import android.app.SearchManager
+import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -13,7 +15,10 @@ import android.net.Uri
 import android.os.BatteryManager
 import android.os.Bundle
 import android.os.Process
+import android.provider.AlarmClock
+import android.provider.CalendarContract
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
@@ -29,6 +34,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -125,16 +131,7 @@ class MainActivity : ComponentActivity() {
                 if (drawerOpen) {
                     AppList(apps, hidden, onOpen = ::open, menu = menu)
                 } else {
-                    HomeScreen(
-                        favorites = favorites.mapNotNull { key -> apps.find { it.key == key } },
-                        onOpen = ::open,
-                        menu = menu,
-                        onSwipeUp = { drawerOpen = true },
-                        onSwipeDown = ::expandNotifications,
-                        weather = weather,
-                        weatherPrompt = weatherPrompt,
-                        onEnableWeather = { requestLocation.launch(Manifest.permission.ACCESS_COARSE_LOCATION) },
-                    )
+                    HomeScreen(menu)
                 }
                 renaming?.let { app ->
                     RenameDialog(app, onRename = { rename(app, it); renaming = null }, onDismiss = { renaming = null })
@@ -175,6 +172,68 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         drawerOpen = false
+    }
+
+    @Composable
+    private fun HomeScreen(menu: AppMenu) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    val threshold = 80.dp.toPx()
+                    var drag = 0f
+                    detectVerticalDragGestures(
+                        onDragStart = { drag = 0f },
+                        onDragEnd = {
+                            when {
+                                drag < -threshold -> drawerOpen = true
+                                drag > threshold -> expandNotifications()
+                            }
+                        },
+                        onVerticalDrag = { _, dy -> drag += dy },
+                    )
+                }
+                .safeDrawingPadding()
+                .padding(vertical = 24.dp)
+        ) {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                // Platform TextClock handles minute ticks, time zone changes and wake-from-sleep on its own
+                TextClock("HH:mm", 64f, Modifier.clickable { launch(Intent(AlarmClock.ACTION_SHOW_ALARMS)) }) // always 24h
+                TextClock("EEEE, d MMMM", 18f, Modifier.clickable { launch(calendarAt(System.currentTimeMillis())) })
+                Row {
+                    weather?.let {
+                        InfoText(it) { launch(Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, "weather")) }
+                        InfoText("  ·  ")
+                    }
+                    InfoText("${batteryLevel()}%") { launch(Intent(Intent.ACTION_POWER_USAGE_SUMMARY)) }
+                }
+                if (weatherPrompt) {
+                    Text(
+                        text = "Tap to show weather",
+                        color = Color.Gray,
+                        fontSize = 14.sp,
+                        modifier = Modifier
+                            .clickable { requestLocation.launch(Manifest.permission.ACCESS_COARSE_LOCATION) }
+                            .padding(8.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            favorites.mapNotNull { key -> apps.find { it.key == key } }
+                .forEach { AppItem(it, 28.sp, ::open, menu, Modifier.align(Alignment.End)) }
+            Spacer(Modifier.weight(1f))
+        }
+    }
+
+    private fun calendarAt(millis: Long) =
+        Intent(Intent.ACTION_VIEW, CalendarContract.CONTENT_URI.buildUpon().appendPath("time").appendPath("$millis").build())
+
+    private fun launch(intent: Intent) {
+        try {
+            startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, "No app can open this", Toast.LENGTH_SHORT).show()
+        }
     }
 
     @Composable
@@ -228,60 +287,8 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun HomeScreen(
-    favorites: List<App>,
-    onOpen: (App) -> Unit,
-    menu: AppMenu,
-    onSwipeUp: () -> Unit,
-    onSwipeDown: () -> Unit,
-    weather: String?,
-    weatherPrompt: Boolean,
-    onEnableWeather: () -> Unit,
-) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                val threshold = 80.dp.toPx()
-                var drag = 0f
-                detectVerticalDragGestures(
-                    onDragStart = { drag = 0f },
-                    onDragEnd = {
-                        when {
-                            drag < -threshold -> onSwipeUp()
-                            drag > threshold -> onSwipeDown()
-                        }
-                    },
-                    onVerticalDrag = { _, dy -> drag += dy },
-                )
-            }
-            .safeDrawingPadding()
-            .padding(vertical = 24.dp)
-    ) {
-        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            // Platform TextClock handles minute ticks, time zone changes and wake-from-sleep on its own
-            TextClock(formatPattern = "HH:mm", sizeSp = 64f) // always 24h
-            TextClock(formatPattern = "EEEE, d MMMM", sizeSp = 18f)
-            Text(listOfNotNull(weather, "${batteryLevel()}%").joinToString("  ·  "), color = Color.White, fontSize = 18.sp)
-            if (weatherPrompt) {
-                Text(
-                    text = "Tap to show weather",
-                    color = Color.Gray,
-                    fontSize = 14.sp,
-                    modifier = Modifier
-                        .clickable(onClick = onEnableWeather)
-                        .padding(8.dp),
-                )
-            }
-        }
-        Spacer(Modifier.weight(1f))
-        favorites.forEach { AppItem(it, 28.sp, onOpen, menu, Modifier.align(Alignment.End)) }
-        Spacer(Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun TextClock(formatPattern: String, sizeSp: Float) = AndroidView(
+private fun TextClock(formatPattern: String, sizeSp: Float, modifier: Modifier = Modifier) = AndroidView(
+    modifier = modifier,
     factory = {
         android.widget.TextClock(it).apply {
             format12Hour = formatPattern
@@ -290,6 +297,14 @@ private fun TextClock(formatPattern: String, sizeSp: Float) = AndroidView(
             setTextColor(android.graphics.Color.WHITE)
         }
     }
+)
+
+@Composable
+private fun InfoText(text: String, onClick: (() -> Unit)? = null) = Text(
+    text = text,
+    color = Color.White,
+    fontSize = 18.sp,
+    modifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier,
 )
 
 @Composable
