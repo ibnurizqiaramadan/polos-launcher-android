@@ -65,7 +65,7 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 - [x] Opsi sembunyikan aplikasi (Hide apps) & rename label app
 
 ## Cara Pakai
-- **Swipe up** di home: buka app drawer (tap search untuk mengetik, Enter = buka hasil pertama)
+- **Swipe up** di home: buka app drawer (tap search untuk mengetik; hasil muncul dari bawah, yang paling cocok tepat di atas search; Enter = buka hasil itu)
 - **Swipe down** di home: buka panel notifikasi
 - **Swipe down** di drawer saat list paling atas: tutup drawer (drawer ikut jari, tarik pendek = batal)
 - **Show: weather / events / screen time / gestures / music** di home: aktifkan info tersebut (tiap hint hilang setelah di-tap sekali; bisa diaktifkan lagi lewat App info)

@@ -559,11 +559,15 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
     var showHidden by remember { mutableStateOf(false) }
     BackHandler(showHidden) { showHidden = false }
     val shown = apps.filter { (it.key in hidden) == showHidden && it.label.contains(query, ignoreCase = true) }
+        .sortedBy { matchRank(it.label, query) } // stable: alphabetical within each rank
     val hiddenCount = apps.count { it.key in hidden }
     val listState = rememberLazyListState()
     // first list index of each letter present, e.g. {'C'=0, 'D'=5, ...}
     val firstIndex = HashMap<Char, Int>().apply { shown.forEachIndexed { i, app -> putIfAbsent(section(app.label), i) } }
     val pullToClose = rememberPullToClose(onClose)
+    // search results stack up from the search field, best match right above it, within thumb reach
+    val searching = query.isNotEmpty()
+    LaunchedEffect(query) { listState.scrollToItem(0) }
     // letter of the topmost visible app; only changes when scrolling crosses into another section
     val currentLetter by remember(shown) {
         derivedStateOf { shown.getOrNull(listState.firstVisibleItemIndex)?.let { IndexLetters.indexOf(section(it.label)) } ?: -1 }
@@ -583,6 +587,7 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
         Box(Modifier.weight(1f)) {
             LazyColumn(
                 state = listState,
+                reverseLayout = searching,
                 modifier = Modifier.fillMaxSize().padding(end = 48.dp),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
@@ -599,8 +604,8 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
                     )
                 }
             }
-            // hidden while typing: squeezed above the keyboard it'd be too cramped to hit, and results are short anyway
-            if (shown.isNotEmpty() && !WindowInsets.isImeVisible) {
+            // hidden while searching: results are short, and above the keyboard it'd be too cramped to hit
+            if (shown.isNotEmpty() && !searching && !WindowInsets.isImeVisible) {
                 AlphabetScroller(
                     firstIndex,
                     shown.lastIndex,
@@ -685,6 +690,13 @@ private fun rememberPullToClose(onClose: () -> Unit): PullToClose {
 
 /** Always the full index so every letter keeps its spot: muscle memory beats a compact list. */
 private val IndexLetters = listOf('#') + ('A'..'Z')
+
+// best search hits first: name starts with the query, then a word in it does, then it's anywhere inside
+private fun matchRank(label: String, query: String) = when {
+    query.isEmpty() || label.startsWith(query, ignoreCase = true) -> 0
+    label.split(' ').any { it.startsWith(query, ignoreCase = true) } -> 1
+    else -> 2
+}
 
 // digits, symbols and non-Latin scripts all land in '#'
 private fun section(label: String) = label.firstOrNull()?.uppercaseChar()?.takeIf { it in 'A'..'Z' } ?: '#'
