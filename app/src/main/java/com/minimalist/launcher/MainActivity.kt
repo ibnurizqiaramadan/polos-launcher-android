@@ -20,7 +20,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -30,7 +32,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -48,27 +54,46 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 
-class App(val label: String, val info: LauncherActivityInfo)
+private const val MAX_FAVORITES = 6
+
+/** Long-press menu content for one app; call `close` to dismiss it. */
+private typealias AppMenu = @Composable (app: App, close: () -> Unit) -> Unit
+
+class App(val key: String, val label: String, val info: LauncherActivityInfo)
 
 class MainActivity : ComponentActivity() {
     private val launcherApps by lazy { getSystemService(LauncherApps::class.java) }
+    private val prefs by lazy { getSharedPreferences("launcher", MODE_PRIVATE) }
     private var apps by mutableStateOf(emptyList<App>())
+    private var favorites by mutableStateOf(emptyList<String>()) // app keys, in display order
     private var drawerOpen by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(SystemBarStyle.dark(TRANSPARENT), SystemBarStyle.dark(TRANSPARENT))
+        favorites = prefs.getString("favorites", "")!!.lines().filter { it.isNotEmpty() }
         setContent {
-            BackHandler { drawerOpen = false } // home screen: back never leaves the launcher
-            if (drawerOpen) {
-                AppList(apps, onOpen = ::open, onInfo = ::openInfo)
-            } else {
-                HomeScreen(onSwipeUp = { drawerOpen = true }, onSwipeDown = ::expandNotifications)
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                val menu: AppMenu = { app, close -> Menu(app, close) }
+                BackHandler { drawerOpen = false } // home screen: back never leaves the launcher
+                if (drawerOpen) {
+                    AppList(apps, onOpen = ::open, menu = menu)
+                } else {
+                    HomeScreen(
+                        favorites = favorites.mapNotNull { key -> apps.find { it.key == key } },
+                        onOpen = ::open,
+                        menu = menu,
+                        onSwipeUp = { drawerOpen = true },
+                        onSwipeDown = ::expandNotifications,
+                    )
+                }
             }
         }
     }
@@ -77,7 +102,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         apps = launcherApps.getActivityList(null, Process.myUserHandle())
-            .map { App(it.label.toString(), it) }
+            .map { App(it.componentName.flattenToString(), it.label.toString(), it) }
             .sortedBy { it.label.lowercase() }
     }
 
@@ -85,6 +110,20 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         drawerOpen = false
+    }
+
+    @Composable
+    private fun Menu(app: App, close: () -> Unit) {
+        val favorite = app.key in favorites
+        if (favorite || favorites.size < MAX_FAVORITES) {
+            MenuItem(if (favorite) "Remove from home" else "Add to home", close) { toggleFavorite(app) }
+        }
+        MenuItem("App info", close) { openInfo(app) }
+    }
+
+    private fun toggleFavorite(app: App) {
+        favorites = if (app.key in favorites) favorites - app.key else favorites + app.key
+        prefs.edit { putString("favorites", favorites.joinToString("\n")) }
     }
 
     private fun open(app: App) {
@@ -111,7 +150,13 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun HomeScreen(onSwipeUp: () -> Unit, onSwipeDown: () -> Unit) {
+private fun HomeScreen(
+    favorites: List<App>,
+    onOpen: (App) -> Unit,
+    menu: AppMenu,
+    onSwipeUp: () -> Unit,
+    onSwipeDown: () -> Unit,
+) {
     Column(
         Modifier
             .fillMaxSize()
@@ -130,12 +175,17 @@ private fun HomeScreen(onSwipeUp: () -> Unit, onSwipeDown: () -> Unit) {
                 )
             }
             .safeDrawingPadding()
-            .padding(24.dp)
+            .padding(vertical = 24.dp)
     ) {
-        // Platform TextClock follows the 24h setting, time zone changes and wake-from-sleep on its own
-        TextClock(formatPattern = null, sizeSp = 64f) // null = system h:mm / HH:mm
-        TextClock(formatPattern = "EEEE, d MMMM", sizeSp = 18f)
-        Text("${batteryLevel()}%", color = Color.White, fontSize = 18.sp)
+        Column(Modifier.padding(horizontal = 24.dp)) {
+            // Platform TextClock follows the 24h setting, time zone changes and wake-from-sleep on its own
+            TextClock(formatPattern = null, sizeSp = 64f) // null = system h:mm / HH:mm
+            TextClock(formatPattern = "EEEE, d MMMM", sizeSp = 18f)
+            Text("${batteryLevel()}%", color = Color.White, fontSize = 18.sp)
+        }
+        Spacer(Modifier.weight(1f))
+        favorites.forEach { AppItem(it, 28.sp, onOpen, menu) }
+        Spacer(Modifier.weight(1f))
     }
 }
 
@@ -168,7 +218,7 @@ private fun batteryLevel(): Int {
 }
 
 @Composable
-private fun AppList(apps: List<App>, onOpen: (App) -> Unit, onInfo: (App) -> Unit) {
+private fun AppList(apps: List<App>, onOpen: (App) -> Unit, menu: AppMenu) {
     var query by remember { mutableStateOf("") }
     val shown = apps.filter { it.label.contains(query, ignoreCase = true) }
     val focus = remember { FocusRequester() }
@@ -198,17 +248,30 @@ private fun AppList(apps: List<App>, onOpen: (App) -> Unit, onInfo: (App) -> Uni
                 .padding(horizontal = 24.dp, vertical = 16.dp),
         )
         LazyColumn(Modifier.weight(1f)) {
-            items(shown, key = { it.info.componentName.flattenToString() }) { app ->
-                Text(
-                    text = app.label,
-                    color = Color.White,
-                    fontSize = 22.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(onClick = { onOpen(app) }, onLongClick = { onInfo(app) })
-                        .padding(horizontal = 24.dp, vertical = 12.dp),
-                )
-            }
+            items(shown, key = { it.key }) { AppItem(it, 22.sp, onOpen, menu) }
         }
     }
 }
+
+@Composable
+private fun AppItem(app: App, fontSize: TextUnit, onOpen: (App) -> Unit, menu: AppMenu) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        Text(
+            text = app.label,
+            color = Color.White,
+            fontSize = fontSize,
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = { onOpen(app) }, onLongClick = { menuOpen = true })
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+        )
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            menu(app) { menuOpen = false }
+        }
+    }
+}
+
+@Composable
+private fun MenuItem(text: String, close: () -> Unit, action: () -> Unit) =
+    DropdownMenuItem(text = { Text(text) }, onClick = { close(); action() })
