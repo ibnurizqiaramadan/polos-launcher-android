@@ -34,7 +34,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -80,7 +81,9 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -492,8 +495,6 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
     val listState = rememberLazyListState()
     // first list index of each letter, e.g. [('C', 0), ('D', 5), ...]
     val sections = shown.withIndex().distinctBy { section(it.value.label) }.map { section(it.value.label) to it.index }
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() } // pops the keyboard as soon as the drawer opens
 
     Column(
         Modifier
@@ -545,7 +546,6 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
             // pill so it reads as an input, not a label
             modifier = Modifier
                 .fillMaxWidth()
-                .focusRequester(focus)
                 .padding(horizontal = 16.dp, vertical = 12.dp)
                 .background(SurfaceDim, RoundedCornerShape(28.dp))
                 .padding(horizontal = 20.dp, vertical = 14.dp),
@@ -564,13 +564,20 @@ private fun AlphabetScroller(sections: List<Pair<Char, Int>>, listState: LazyLis
     val haptic = LocalHapticFeedback.current
     val keyboard = LocalSoftwareKeyboardController.current
     val letterPx = with(LocalDensity.current) { LetterHeight.toPx() }
-    var touchY by remember { mutableStateOf<Float?>(null) } // finger y inside the scroller, null when lifted
-    val active = touchY?.let { (it / letterPx).toInt().coerceIn(sections.indices) }
+    val waveShiftPx = with(LocalDensity.current) { WaveShift.toPx() }
+    var touching by remember { mutableStateOf(false) }
+    var touchY by remember { mutableFloatStateOf(0f) } // finger y inside the scroller; kept after lift so the wave fades out in place
+    // letters follow the finger with no lag; only the wave's strength eases in and out
+    val strength by animateFloatAsState(if (touching) 1f else 0f, tween(if (touching) 120 else 200), label = "wave")
+    // recompose only when the letter under the finger changes, not on every move
+    val active by remember(sections) {
+        derivedStateOf { if (touching) (touchY / letterPx).toInt().coerceIn(sections.indices) else null }
+    }
 
     LaunchedEffect(active) {
-        if (active == null) return@LaunchedEffect
+        val index = active ?: return@LaunchedEffect
         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        listState.scrollToItem(sections[active].second)
+        listState.scrollToItem(sections[index].second)
     }
 
     Box(modifier.width(48.dp)) {
@@ -582,42 +589,41 @@ private fun AlphabetScroller(sections: List<Pair<Char, Int>>, listState: LazyLis
                         val down = awaitFirstDown()
                         keyboard?.hide() // free up the whole list
                         touchY = down.position.y
+                        touching = true
                         do {
                             val event = awaitPointerEvent()
                             event.changes.forEach { it.consume() }
                             touchY = event.changes.first().position.y
                         } while (event.changes.any { it.pressed })
-                        touchY = null
+                        touching = false
                     }
                 }
         ) {
             sections.forEachIndexed { i, (letter, _) ->
-                val distance = touchY?.let { i + 0.5f - it / letterPx } // in letters
-                val shift by animateDpAsState(
-                    if (distance == null) 0.dp else WaveShift * exp(-distance * distance / 18f),
-                    label = "wave",
-                )
                 Box(
                     Modifier
                         .fillMaxWidth()
                         .height(LetterHeight)
-                        .offset(x = -shift),
+                        // read at placement: moving the finger re-places letters without recomposing them
+                        .offset {
+                            val distance = i + 0.5f - touchY / letterPx // in letters
+                            IntOffset(-(waveShiftPx * strength * exp(-distance * distance / 18f)).roundToInt(), 0)
+                        },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(letter.toString(), color = if (i == active) TextPrimary else TextMuted, fontSize = 13.sp)
                 }
             }
         }
-        val y = touchY
-        if (y != null && active != null) {
+        active?.let { index ->
             Box(
                 Modifier
-                    .offset { IntOffset((-96).dp.roundToPx(), (y - 28.dp.toPx()).roundToInt()) }
+                    .offset { IntOffset((-96).dp.roundToPx(), (touchY - 28.dp.toPx()).roundToInt()) }
                     .size(56.dp)
                     .background(Color.White, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(sections[active].first.toString(), color = Color.Black, fontSize = 28.sp)
+                Text(sections[index].first.toString(), color = Color.Black, fontSize = 28.sp)
             }
         }
     }
@@ -643,8 +649,10 @@ private fun AppItem(
                 .combinedClickable(onClick = { onOpen(app) }, onLongClick = { menuOpen = true })
                 .padding(horizontal = 24.dp, vertical = 12.dp),
         )
-        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-            menu(app) { menuOpen = false }
+        if (menuOpen) { // composed only while open: keeps every list item light while scrolling
+            DropdownMenu(expanded = true, onDismissRequest = { menuOpen = false }) {
+                menu(app) { menuOpen = false }
+            }
         }
     }
 }

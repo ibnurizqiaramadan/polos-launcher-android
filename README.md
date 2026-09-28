@@ -52,7 +52,7 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 - [ ] Opsi toggle icon monochrome
 - [x] Alphabet fast scroller (wave) di app drawer
 - [x] Tema pitch black (#000) untuk hemat baterai AMOLED
-- [x] Fast search bar dengan keyboard auto-popup
+- [x] Search bar di bawah drawer (keyboard muncul saat di-tap)
 - [x] Pin favorit di home screen (maksimal 6 app esensial)
 - [x] Gesture swipe up (app drawer) & swipe down (notifikasi sistem)
 - [x] Indikator jam (24 jam, center), tanggal, dan battery percentage minimalis
@@ -64,11 +64,10 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 - [x] Opsi sembunyikan aplikasi (Hide apps) & rename label app
 
 ## Cara Pakai
-- **Swipe up** di home: buka app drawer (keyboard search langsung muncul, Enter = buka hasil pertama)
+- **Swipe up** di home: buka app drawer (tap search untuk mengetik, Enter = buka hasil pertama)
 - **Swipe down** di home: buka panel notifikasi
 - **Tap to show weather / events / screen time / music** di home: aktifkan info tersebut (tiap hint hilang setelah di-tap sekali; bisa diaktifkan lagi lewat App info)
 - **Tap jam** = alarm, **tap tanggal** = kalender, **tap cuaca** = prakiraan, **tap baterai** = pemakaian baterai, **tap acara** = buka acaranya
-- Search bar ada di bawah drawer, tepat di atas keyboard
 - **Long press** app: Add to home / Rename / Hide / App info
 - **Drag huruf** di kanan drawer: lompat ke huruf itu (efek wave + bubble)
 - App tersembunyi ada di "Hidden apps (n)" paling bawah drawer
