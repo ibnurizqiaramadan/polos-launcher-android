@@ -455,11 +455,17 @@ class MainActivity : ComponentActivity() {
     private fun calendarAt(millis: Long) =
         Intent(Intent.ACTION_VIEW, CalendarContract.CONTENT_URI.buildUpon().appendPath("time").appendPath("$millis").build())
 
-    private fun launch(intent: Intent) {
+    private fun launch(intent: Intent) = safely { startActivity(intent) }
+
+    // A home screen must never crash because some app refuses to open: missing handler, or one guarded by a
+    // permission (Xiaomi's clock wants SET_ALARM for SHOW_ALARMS), or an app disabled since the list loaded.
+    private fun safely(start: () -> Unit) {
         try {
-            startActivity(intent)
+            start()
         } catch (_: ActivityNotFoundException) {
             Toast.makeText(this, "No app can open this", Toast.LENGTH_SHORT).show()
+        } catch (_: SecurityException) {
+            Toast.makeText(this, "That app didn't allow opening it from here", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -491,11 +497,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun open(app: App) {
-        launcherApps.startMainActivity(app.info.componentName, app.info.user, null, null)
+        safely { launcherApps.startMainActivity(app.info.componentName, app.info.user, null, null) }
         drawerOpen = false
     }
 
-    private fun openInfo(app: App) = startActivity(
+    private fun openInfo(app: App) = launch(
         Intent(
             Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             Uri.fromParts("package", app.info.componentName.packageName, null),

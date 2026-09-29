@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+    <!-- normal permission; some clock apps (Xiaomi's) require it to open the alarm list -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <!-- weather -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
