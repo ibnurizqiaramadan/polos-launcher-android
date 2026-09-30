@@ -196,6 +196,7 @@ class MainActivity : ComponentActivity() {
     private var hidden by mutableStateOf(emptySet<String>())
     private var renaming by mutableStateOf<App?>(null)
     private var explainGestures by mutableStateOf(false)
+    private var showBattery by mutableStateOf(false)
     private var drawerOpen by mutableStateOf(false)
     private var weather by mutableStateOf<Weather?>(null)
     private var weatherFetchedAt = 0L
@@ -243,6 +244,15 @@ class MainActivity : ComponentActivity() {
                     }
                     renaming?.let { app ->
                         RenameDialog(app, onRename = { rename(app, it); renaming = null }, onDismiss = { renaming = null })
+                    }
+                    if (showBattery) {
+                        BatteryDialog(
+                            onUsage = {
+                                showBattery = false
+                                launch(Intent(Intent.ACTION_POWER_USAGE_SUMMARY))
+                            },
+                            onDismiss = { showBattery = false },
+                        )
                     }
                     if (explainGestures) {
                         GesturesDialog(
@@ -453,7 +463,7 @@ class MainActivity : ComponentActivity() {
                         }
                         InfoText("·")
                     }
-                    InfoText("${batteryLevel()}%") { launch(Intent(Intent.ACTION_POWER_USAGE_SUMMARY)) }
+                    InfoText("${batteryLevel()}%") { showBattery = true }
                 }
                 Spacer(Modifier.height(12.dp))
                 // all setup hints on one line instead of a stack of "Tap to show ..." rows
@@ -512,9 +522,10 @@ class MainActivity : ComponentActivity() {
     private fun TodayColumn() {
         val w = weather
         val statLines = rememberSystemStatLines()
-        if (w == null && nextEvent == null && nextAlarm == null && allDayToday.isEmpty() && statLines.isEmpty()) return
+        val hasToday = w != null || nextEvent != null || nextAlarm != null || allDayToday.isNotEmpty()
+        if (!hasToday && statLines.isEmpty()) return
         Column(Modifier.padding(start = 12.dp, bottom = 16.dp)) {
-            SubText("Today")
+            if (hasToday) SubText("Today")
             w?.let {
                 val forecast = { launch(Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, listOfNotNull("weather", it.place).joinToString(" "))) }
                 SubText("${it.high}° / ${it.low}°", color = TextSecondary, onClick = forecast)
@@ -528,7 +539,12 @@ class MainActivity : ComponentActivity() {
                 SubText("$time  ${event.title}", color = TextSecondary) { openEvent(event) }
             }
             nextAlarm?.let { SubText("Alarm ${timeText(it)}", color = TextSecondary) { launch(Intent(AlarmClock.ACTION_SHOW_ALARMS)) } }
-            statLines.forEach { SubText(it, color = TextSecondary, tabular = true) }
+            // grouped apart from the day's info; any of these lines opens the battery details
+            if (statLines.isNotEmpty()) {
+                if (hasToday) Spacer(Modifier.height(12.dp))
+                SubText("Device")
+                statLines.forEach { SubText(it, color = TextSecondary, tabular = true) { showBattery = true } }
+            }
         }
     }
 
@@ -542,7 +558,9 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(lifecycle) {
             lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 while (true) {
-                    lines = withContext(Dispatchers.IO) { systemStats().let { listOfNotNull(it.ramText(), it.cpuText()) } }
+                    lines = withContext(Dispatchers.IO) {
+                        systemStats().let { listOfNotNull(it.ramText(), it.cpuText(), batteryStats()?.lineText()) }
+                    }
                     delay(5_000)
                 }
             }
@@ -1105,6 +1123,35 @@ private fun RenameDialog(app: App, onRename: (String) -> Unit, onDismiss: () -> 
         },
         confirmButton = { TextButton(onClick = { onRename(name.text) }) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Ampere-style battery details; the current keeps updating while the dialog is open. */
+@Composable
+private fun BatteryDialog(onUsage: () -> Unit, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    var rows by remember { mutableStateOf(emptyList<Pair<String, String>>()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            rows = withContext(Dispatchers.IO) { context.batteryStats()?.detailRows().orEmpty() }
+            delay(2_000)
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Battery") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                rows.forEach { (label, value) ->
+                    Row(Modifier.fillMaxWidth()) {
+                        Text(label, color = TextMuted, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Text(value, fontSize = 14.sp, style = LocalTextStyle.current.copy(fontFeatureSettings = "tnum"))
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = { TextButton(onClick = onUsage) { Text("Battery usage") } },
     )
 }
 
