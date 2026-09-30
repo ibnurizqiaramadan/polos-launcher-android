@@ -19,15 +19,18 @@ import java.net.URL
 import kotlin.coroutines.resume
 import kotlin.math.roundToInt
 
-/** [summary] like "28° Cloudy"; [place] is the area it's for (e.g. "Wanareja"), when the geocoder knows it. */
-class Weather(val summary: String, val place: String?)
+/**
+ * [summary] like "28° Cloudy"; [place] is the area it's for (e.g. "Wanareja"), when the geocoder knows it.
+ * [high]/[low] (°) and [rainChance] (%) are for the rest of today.
+ */
+class Weather(val summary: String, val place: String?, val high: Int, val low: Int, val rainChance: Int)
 
 /** Weather where the phone is now, or null without a location. Caller must hold ACCESS_COARSE_LOCATION. */
 suspend fun Context.currentWeather(): Weather? {
     val last = lastKnownLocation()
     // a cached fix can be hours old and from somewhere else, so only take a recent one; a stale one is the last resort
     val location = last?.takeIf { it.ageMillis() < 15 * 60_000 } ?: freshLocation() ?: last ?: return null
-    return Weather(fetchWeather(location.latitude, location.longitude), placeName(location))
+    return fetchWeather(location.latitude, location.longitude, placeName(location))
 }
 
 private fun Location.ageMillis() = (SystemClock.elapsedRealtimeNanos() - elapsedRealtimeNanos) / 1_000_000
@@ -65,15 +68,26 @@ private suspend fun Context.freshLocation(): Location? = suspendCancellableCorou
     }.onFailure { cont.resume(null) } // e.g. provider missing on this device
 }
 
-// Open-Meteo: free, no API key
-private suspend fun fetchWeather(lat: Double, lon: Double): String = withContext(Dispatchers.IO) {
-    val url = URL("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code")
+// Open-Meteo: free, no API key; one request for now and today (local timezone decides where "today" ends)
+private suspend fun fetchWeather(lat: Double, lon: Double, place: String?): Weather = withContext(Dispatchers.IO) {
+    val url = URL(
+        "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code" +
+            "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=1"
+    )
     val conn = (url.openConnection() as HttpURLConnection).apply {
         connectTimeout = 10_000
         readTimeout = 10_000
     }
-    val current = conn.inputStream.bufferedReader().use { JSONObject(it.readText()) }.getJSONObject("current")
-    "${current.getDouble("temperature_2m").roundToInt()}° ${describe(current.getInt("weather_code"))}".trim()
+    val json = conn.inputStream.bufferedReader().use { JSONObject(it.readText()) }
+    val current = json.getJSONObject("current")
+    val daily = json.getJSONObject("daily")
+    Weather(
+        summary = "${current.getDouble("temperature_2m").roundToInt()}° ${describe(current.getInt("weather_code"))}".trim(),
+        place = place,
+        high = daily.getJSONArray("temperature_2m_max").getDouble(0).roundToInt(),
+        low = daily.getJSONArray("temperature_2m_min").getDouble(0).roundToInt(),
+        rainChance = daily.getJSONArray("precipitation_probability_max").optInt(0),
+    )
 }
 
 // WMO weather interpretation codes, see open-meteo.com/en/docs

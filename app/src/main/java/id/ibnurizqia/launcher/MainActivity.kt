@@ -95,6 +95,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedTextField
@@ -103,6 +104,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -196,6 +198,7 @@ class MainActivity : ComponentActivity() {
     private var nextAlarm by mutableStateOf<Long?>(null)
     private var nextEvent by mutableStateOf<CalendarEvent?>(null)
     private var screenTime by mutableStateOf<Long?>(null)
+    private var recent by mutableStateOf(emptyList<String>()) // packages, most recently used first
     private val media by lazy { MediaWatcher(this) }
     private var hints by mutableStateOf(emptyList<Pair<String, () -> Unit>>()) // setup hints: text to on-tap
     // the dialog pausing us means onResume re-reads every permission, so the result itself is unused
@@ -264,7 +267,12 @@ class MainActivity : ComponentActivity() {
         refreshWeather()
         nextAlarm = nextClockAlarm()
         if (granted(CALENDAR)) lifecycleScope.launch { nextEvent = withContext(Dispatchers.IO) { queryNextEvent() } }
-        if (hasUsageAccess()) lifecycleScope.launch { screenTime = withContext(Dispatchers.Default) { screenTimeToday() } }
+        if (hasUsageAccess()) {
+            lifecycleScope.launch {
+                screenTime = withContext(Dispatchers.Default) { screenTimeToday() }
+                recent = withContext(Dispatchers.Default) { recentPackages() }
+            }
+        }
     }
 
     // Android exposes only the single soonest "alarm clock" from any app, and reminder/tracker apps use that
@@ -415,16 +423,6 @@ class MainActivity : ComponentActivity() {
                     InfoText("${batteryLevel()}%") { launch(Intent(Intent.ACTION_POWER_USAGE_SUMMARY)) }
                 }
                 Spacer(Modifier.height(12.dp))
-                nextEvent?.let { event ->
-                    val time = if (event.begin <= System.currentTimeMillis()) "Now" else timeText(event.begin)
-                    SubText("$time  ${event.title}") {
-                        launch(
-                            Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, event.id))
-                                .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, event.begin)
-                        )
-                    }
-                }
-                nextAlarm?.let { SubText("Alarm ${timeText(it)}") { launch(Intent(AlarmClock.ACTION_SHOW_ALARMS)) } }
                 // all setup hints on one line instead of a stack of "Tap to show ..." rows
                 if (hints.isNotEmpty()) {
                     FlowRow(horizontalArrangement = Arrangement.Center) {
@@ -434,9 +432,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
             Spacer(Modifier.weight(1f))
-            // favorites sit low on the right: within thumb reach
-            favorites.mapNotNull { key -> apps.find { it.key == key } }
-                .forEach { AppItem(it, 28.sp, ::open, menu, Modifier.align(Alignment.End), FontWeight.Light, Alignment.End) }
+            // left: things to read (today, recent apps) in quiet grey; right: favorites to tap, within thumb reach
+            Row(Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    TodayColumn()
+                    RecentColumn(menu)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    favorites.mapNotNull { key -> apps.find { it.key == key } }
+                        .forEach { AppItem(it, 28.sp, ::open, menu, fontWeight = FontWeight.Light, align = Alignment.End) }
+                }
+            }
             Spacer(Modifier.height(24.dp))
             media.nowPlaying?.let { track ->
                 Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -467,6 +473,46 @@ class MainActivity : ComponentActivity() {
                     launch(Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA))
                 }
             }
+        }
+    }
+
+    // SubText pads 12dp; the extra 12dp lines these up with the 24dp app rows
+    @Composable
+    private fun TodayColumn() {
+        val w = weather
+        if (w == null && nextEvent == null && nextAlarm == null) return
+        Column(Modifier.padding(start = 12.dp, bottom = 16.dp)) {
+            SubText("Today")
+            w?.let {
+                val forecast = { launch(Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, listOfNotNull("weather", it.place).joinToString(" "))) }
+                SubText("${it.high}° / ${it.low}°", color = TextSecondary, onClick = forecast)
+                SubText("Rain ${it.rainChance}%", color = TextSecondary, onClick = forecast)
+            }
+            nextEvent?.let { event ->
+                val time = if (event.begin <= System.currentTimeMillis()) "Now" else timeText(event.begin)
+                SubText("$time  ${event.title}", color = TextSecondary) {
+                    launch(
+                        Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, event.id))
+                            .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, event.begin)
+                    )
+                }
+            }
+            nextAlarm?.let { SubText("Alarm ${timeText(it)}", color = TextSecondary) { launch(Intent(AlarmClock.ACTION_SHOW_ALARMS)) } }
+        }
+    }
+
+    // last few apps used that aren't already a favorite (or hidden)
+    @Composable
+    private fun RecentColumn(menu: AppMenu) {
+        val shownRecent = recent.asSequence()
+            .mapNotNull { pkg -> apps.firstOrNull { it.info.componentName.packageName == pkg } }
+            .filter { it.key !in favorites && it.key !in hidden }
+            .take(4)
+            .toList()
+        if (shownRecent.isEmpty()) return
+        SubText("Recent", Modifier.padding(start = 12.dp))
+        CompositionLocalProvider(LocalContentColor provides TextSecondary) {
+            shownRecent.forEach { AppItem(it, 18.sp, ::open, menu) }
         }
     }
 
@@ -884,7 +930,7 @@ private fun AppItem(
                 .padding(horizontal = 24.dp, vertical = if (app.detail != null) 8.dp else 12.dp),
             horizontalAlignment = align,
         ) {
-            Text(text = app.label, fontSize = fontSize, fontWeight = fontWeight)
+            Text(text = app.label, fontSize = fontSize, fontWeight = fontWeight, maxLines = 1, overflow = TextOverflow.Ellipsis)
             app.detail?.let {
                 Text(text = it, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }

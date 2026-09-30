@@ -45,6 +45,18 @@ fun Context.screenTimeToday(): Long {
     return total
 }
 
+/** Packages other than this launcher, most recently used first (last 3 days). Needs usage access. */
+fun Context.recentPackages(): List<String> {
+    val now = System.currentTimeMillis()
+    return getSystemService(UsageStatsManager::class.java)
+        .queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - 3 * 24 * 3600_000L, now)
+        .filter { it.packageName != packageName && it.totalTimeInForeground > 0 }
+        .groupBy { it.packageName } // daily buckets repeat a package
+        .map { (pkg, stats) -> pkg to stats.maxOf { it.lastTimeUsed } }
+        .sortedByDescending { it.second }
+        .map { it.first }
+}
+
 /** "2h 14m", or "14m" under an hour. */
 fun formatDuration(millis: Long): String {
     val minutes = millis / 60_000
