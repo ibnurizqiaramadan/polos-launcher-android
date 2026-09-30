@@ -95,7 +95,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedTextField
@@ -104,7 +103,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -230,7 +228,11 @@ class MainActivity : ComponentActivity() {
                         },
                         label = "drawer",
                     ) { open ->
-                        if (open) AppList(apps, hidden, onOpen = ::open, onClose = { drawerOpen = false }, menu = menu) else HomeScreen(menu)
+                        if (open) {
+                            AppList(apps, hidden, recentApps(3), onOpen = ::open, onClose = { drawerOpen = false }, menu = menu)
+                        } else {
+                            HomeScreen(menu)
+                        }
                     }
                     renaming?.let { app ->
                         RenameDialog(app, onRename = { rename(app, it); renaming = null }, onDismiss = { renaming = null })
@@ -432,12 +434,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
             Spacer(Modifier.weight(1f))
-            // left: things to read (today, recent apps) in quiet grey; right: favorites to tap, within thumb reach
-            Row(Modifier.fillMaxWidth()) {
-                Column(Modifier.weight(1f)) {
-                    TodayColumn()
-                    RecentColumn(menu)
-                }
+            // left: things to read (today) in quiet grey; right: favorites to tap, within thumb reach
+            // bottom-aligned: however tall the left column gets, favorites stay exactly where they are
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                Column(Modifier.weight(1f)) { TodayColumn() }
                 Column(horizontalAlignment = Alignment.End) {
                     favorites.mapNotNull { key -> apps.find { it.key == key } }
                         .forEach { AppItem(it, 28.sp, ::open, menu, fontWeight = FontWeight.Light, align = Alignment.End) }
@@ -502,19 +502,11 @@ class MainActivity : ComponentActivity() {
     }
 
     // last few apps used that aren't already a favorite (or hidden)
-    @Composable
-    private fun RecentColumn(menu: AppMenu) {
-        val shownRecent = recent.asSequence()
-            .mapNotNull { pkg -> apps.firstOrNull { it.info.componentName.packageName == pkg } }
-            .filter { it.key !in favorites && it.key !in hidden }
-            .take(4)
-            .toList()
-        if (shownRecent.isEmpty()) return
-        SubText("Recent", Modifier.padding(start = 12.dp))
-        CompositionLocalProvider(LocalContentColor provides TextSecondary) {
-            shownRecent.forEach { AppItem(it, 18.sp, ::open, menu) }
-        }
-    }
+    private fun recentApps(count: Int) = recent.asSequence()
+        .mapNotNull { pkg -> apps.firstOrNull { it.info.componentName.packageName == pkg } }
+        .filter { it.key !in favorites && it.key !in hidden }
+        .take(count)
+        .toList()
 
     private fun calendarAt(millis: Long) =
         Intent(Intent.ACTION_VIEW, CalendarContract.CONTENT_URI.buildUpon().appendPath("time").appendPath("$millis").build())
@@ -650,7 +642,14 @@ private fun batteryLevel(): Int {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit, onClose: () -> Unit, menu: AppMenu) {
+private fun AppList(
+    apps: List<App>,
+    hidden: Set<String>,
+    recent: List<App>,
+    onOpen: (App) -> Unit,
+    onClose: () -> Unit,
+    menu: AppMenu,
+) {
     var query by remember { mutableStateOf("") }
     var showHidden by remember { mutableStateOf(false) }
     BackHandler(showHidden) { showHidden = false }
@@ -709,6 +708,15 @@ private fun AppList(apps: List<App>, hidden: Set<String>, onOpen: (App) -> Unit,
                     listState,
                     Modifier.align(Alignment.TopEnd).fillMaxHeight().padding(end = 16.dp), // clear of the edge gesture strip
                 )
+            }
+        }
+        // a few recent apps right above the search field, within thumb reach; out of the way while searching
+        if (!searching && recent.isNotEmpty()) {
+            Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                SubText("Recent:")
+                recent.forEach { app ->
+                    SubText(app.label, Modifier.weight(1f, fill = false), color = TextSecondary) { onOpen(app) }
+                }
             }
         }
         // bottom, right above the keyboard: thumb reach
