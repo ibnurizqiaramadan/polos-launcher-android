@@ -258,9 +258,19 @@ class MainActivity : ComponentActivity() {
         loadApps()
         refreshHints()
         refreshWeather()
-        nextAlarm = getSystemService(AlarmManager::class.java).nextAlarmClock?.triggerTime
+        nextAlarm = nextClockAlarm()
         if (granted(CALENDAR)) lifecycleScope.launch { nextEvent = withContext(Dispatchers.IO) { queryNextEvent() } }
         if (hasUsageAccess()) lifecycleScope.launch { screenTime = withContext(Dispatchers.Default) { screenTimeToday() } }
+    }
+
+    // Android exposes only the single soonest "alarm clock" from any app, and reminder/tracker apps use that
+    // API for exact wake-ups (e.g. a midnight job), which isn't an alarm to the user. Only trust ones a clock set.
+    // ponytail: a clock alarm queued behind such a job stays hidden until the job passes; there's no API to list more
+    private fun nextClockAlarm(): Long? {
+        val next = getSystemService(AlarmManager::class.java).nextAlarmClock ?: return null
+        val creator = next.showIntent?.creatorPackage ?: return next.triggerTime // no creator to check: trust it
+        val clocks = packageManager.queryIntentActivities(Intent(AlarmClock.ACTION_SHOW_ALARMS), 0).map { it.activityInfo.packageName }
+        return next.triggerTime.takeIf { creator in clocks }
     }
 
     private fun granted(permission: String) = checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
