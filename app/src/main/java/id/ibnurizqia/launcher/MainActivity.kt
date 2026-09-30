@@ -521,9 +521,9 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun TodayColumn() {
         val w = weather
-        val statLines = rememberSystemStatLines()
+        val device = rememberDeviceLines()
         val hasToday = w != null || nextEvent != null || nextAlarm != null || allDayToday.isNotEmpty()
-        if (!hasToday && statLines.isEmpty()) return
+        if (!hasToday && device == null) return
         Column(Modifier.padding(start = 12.dp, bottom = 16.dp)) {
             if (hasToday) SubText("Today")
             w?.let {
@@ -539,27 +539,31 @@ class MainActivity : ComponentActivity() {
                 SubText("$time  ${event.title}", color = TextSecondary) { openEvent(event) }
             }
             nextAlarm?.let { SubText("Alarm ${timeText(it)}", color = TextSecondary) { launch(Intent(AlarmClock.ACTION_SHOW_ALARMS)) } }
-            // grouped apart from the day's info; any of these lines opens the battery details
-            if (statLines.isNotEmpty()) {
+            // grouped apart from the day's info; only the battery line has details behind it
+            device?.let {
                 if (hasToday) Spacer(Modifier.height(12.dp))
                 SubText("Device")
-                statLines.forEach { SubText(it, color = TextSecondary, tabular = true) { showBattery = true } }
+                SubText(it.ram, color = TextSecondary, tabular = true)
+                it.cpu?.let { cpu -> SubText(cpu, color = TextSecondary, tabular = true) }
+                it.battery?.let { battery -> SubText(battery, color = TextSecondary, tabular = true) { showBattery = true } }
             }
         }
     }
 
+    private data class DeviceLines(val ram: String, val cpu: String?, val battery: String?)
+
     // Refreshed every 5 s only while home is actually on screen: repeatOnLifecycle stops the loop when the
     // screen goes off or another app (or the drawer, which disposes this) takes over. The state holds the
-    // shown text, so an unchanged reading causes no recomposition or redraw at all.
+    // shown text (a data class), so an unchanged reading causes no recomposition or redraw at all.
     @Composable
-    private fun rememberSystemStatLines(): List<String> {
-        var lines by remember { mutableStateOf(emptyList<String>()) }
+    private fun rememberDeviceLines(): DeviceLines? {
+        var lines by remember { mutableStateOf<DeviceLines?>(null) }
         val lifecycle = LocalLifecycleOwner.current.lifecycle
         LaunchedEffect(lifecycle) {
             lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 while (true) {
                     lines = withContext(Dispatchers.IO) {
-                        systemStats().let { listOfNotNull(it.ramText(), it.cpuText(), batteryStats()?.lineText()) }
+                        systemStats().let { DeviceLines(it.ramText(), it.cpuText(), batteryStats()?.lineText()) }
                     }
                     delay(5_000)
                 }
