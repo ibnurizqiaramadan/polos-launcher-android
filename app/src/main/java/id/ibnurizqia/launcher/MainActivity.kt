@@ -187,7 +187,7 @@ class MainActivity : ComponentActivity() {
     private var renaming by mutableStateOf<App?>(null)
     private var explainGestures by mutableStateOf(false)
     private var drawerOpen by mutableStateOf(false)
-    private var weather by mutableStateOf<String?>(null)
+    private var weather by mutableStateOf<Weather?>(null)
     private var weatherFetchedAt = 0L
     private var nextAlarm by mutableStateOf<Long?>(null)
     private var nextEvent by mutableStateOf<CalendarEvent?>(null)
@@ -401,8 +401,11 @@ class MainActivity : ComponentActivity() {
                 TextClock("EEEE, d MMMM", 18f, modifier = Modifier.clickable { launch(calendarAt(System.currentTimeMillis())) })
                 Spacer(Modifier.height(4.dp))
                 Row {
-                    weather?.let {
-                        InfoText(it) { launch(Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, "weather")) }
+                    weather?.let { w ->
+                        // the place makes it clear which area this is for; tapping opens that area's forecast
+                        InfoText(listOfNotNull(w.summary, w.place).joinToString(", ")) {
+                            launch(Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, listOfNotNull("weather", w.place).joinToString(" ")))
+                        }
                         InfoText("·")
                     }
                     InfoText("${batteryLevel()}%") { launch(Intent(Intent.ACTION_POWER_USAGE_SUMMARY)) }

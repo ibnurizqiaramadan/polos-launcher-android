@@ -2,10 +2,12 @@ package id.ibnurizqia.launcher
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
 import android.os.Build
 import android.os.CancellationSignal
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import kotlinx.coroutines.Dispatchers
@@ -17,10 +19,26 @@ import java.net.URL
 import kotlin.coroutines.resume
 import kotlin.math.roundToInt
 
-/** Current weather like "28° Cloudy", or null when there's no location. Caller must hold ACCESS_COARSE_LOCATION. */
-suspend fun Context.currentWeather(): String? {
-    val location = lastKnownLocation() ?: freshLocation() ?: return null
-    return fetchWeather(location.latitude, location.longitude)
+/** [summary] like "28° Cloudy"; [place] is the area it's for (e.g. "Wanareja"), when the geocoder knows it. */
+class Weather(val summary: String, val place: String?)
+
+/** Weather where the phone is now, or null without a location. Caller must hold ACCESS_COARSE_LOCATION. */
+suspend fun Context.currentWeather(): Weather? {
+    val last = lastKnownLocation()
+    // a cached fix can be hours old and from somewhere else, so only take a recent one; a stale one is the last resort
+    val location = last?.takeIf { it.ageMillis() < 15 * 60_000 } ?: freshLocation() ?: last ?: return null
+    return Weather(fetchWeather(location.latitude, location.longitude), placeName(location))
+}
+
+private fun Location.ageMillis() = (SystemClock.elapsedRealtimeNanos() - elapsedRealtimeNanos) / 1_000_000
+
+// shown next to the weather so it's obvious which area it's for
+@Suppress("DEPRECATION") // the listener variant is API 33+; on a background thread the blocking one is fine
+private suspend fun Context.placeName(location: Location): String? = withContext(Dispatchers.IO) {
+    if (!Geocoder.isPresent()) return@withContext null
+    runCatching { Geocoder(this@placeName).getFromLocation(location.latitude, location.longitude, 1) }
+        .getOrNull()?.firstOrNull()
+        ?.let { it.locality ?: it.subAdminArea ?: it.adminArea }
 }
 
 @SuppressLint("MissingPermission") // checked by caller
