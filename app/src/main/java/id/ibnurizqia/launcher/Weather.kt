@@ -79,11 +79,14 @@ private suspend fun fetchWeather(lat: Double, lon: Double): String = withContext
 // WMO weather interpretation codes, see open-meteo.com/en/docs
 private fun describe(code: Int) = when (code) {
     0 -> "Clear"
-    1, 2 -> "Partly cloudy"
+    1 -> "Mostly clear"
+    2 -> "Partly cloudy"
     3 -> "Cloudy"
     45, 48 -> "Fog"
     in 51..57 -> "Drizzle"
-    in 61..67, in 80..82 -> "Rain"
+    61, 80 -> "Light rain"
+    63, 66, 81 -> "Rain"
+    65, 67, 82 -> "Heavy rain"
     in 71..77, 85, 86 -> "Snow"
     in 95..99 -> "Thunderstorm"
     else -> ""
