@@ -157,6 +157,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import java.time.LocalDate
 import kotlin.math.exp
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
@@ -195,6 +196,7 @@ class MainActivity : ComponentActivity() {
     private var weatherFetchedAt = 0L
     private var nextAlarm by mutableStateOf<Long?>(null)
     private var nextEvent by mutableStateOf<CalendarEvent?>(null)
+    private var allDayToday by mutableStateOf(emptyList<CalendarEvent>()) // holidays, birthdays...
     private var screenTime by mutableStateOf<Long?>(null)
     private var recent by mutableStateOf(emptyList<String>()) // packages, most recently used first
     private val media by lazy { MediaWatcher(this) }
@@ -268,7 +270,12 @@ class MainActivity : ComponentActivity() {
         refreshHints()
         refreshWeather()
         nextAlarm = nextClockAlarm()
-        if (granted(CALENDAR)) lifecycleScope.launch { nextEvent = withContext(Dispatchers.IO) { queryNextEvent() } }
+        if (granted(CALENDAR)) {
+            lifecycleScope.launch {
+                nextEvent = withContext(Dispatchers.IO) { queryNextEvent() }
+                allDayToday = withContext(Dispatchers.IO) { queryAllDayToday() }
+            }
+        }
         if (hasUsageAccess()) {
             lifecycleScope.launch {
                 screenTime = withContext(Dispatchers.Default) { screenTimeToday() }
@@ -321,20 +328,39 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // next timed event within 24h that hasn't ended and wasn't declined
+    // Reads what Google Calendar (and any other synced calendar) keeps in the system provider;
+    // only calendars shown in the calendar app and events not declined count.
+    private val eventFilter = "${Instances.VISIBLE} = 1 AND " +
+        "${Instances.SELF_ATTENDEE_STATUS} != ${CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED}"
+
+    // next timed event within a week that hasn't ended
     private fun queryNextEvent(): CalendarEvent? {
         val now = System.currentTimeMillis()
         val range = Instances.CONTENT_URI.buildUpon()
         ContentUris.appendId(range, now)
-        ContentUris.appendId(range, now + 24 * 3600_000)
+        ContentUris.appendId(range, now + 7 * 24 * 3600_000L)
         return contentResolver.query(
             range.build(),
             arrayOf(Instances.EVENT_ID, Instances.TITLE, Instances.BEGIN),
-            "${Instances.ALL_DAY} = 0 AND ${Instances.END} > ? AND ${Instances.VISIBLE} = 1 AND " +
-                "${Instances.SELF_ATTENDEE_STATUS} != ${CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED}",
+            "${Instances.ALL_DAY} = 0 AND ${Instances.END} > ? AND $eventFilter",
             arrayOf("$now"),
             "${Instances.BEGIN} ASC",
         )?.use { c -> if (c.moveToFirst()) CalendarEvent(c.getLong(0), c.getString(1).orEmpty(), c.getLong(2)) else null }
+    }
+
+    // All-day events are stored at UTC midnight, so match them by local calendar day instead of by time
+    private fun queryAllDayToday(): List<CalendarEvent> {
+        val today = LocalDate.now().toEpochDay() + 2_440_588 // Julian day number, as the provider counts days
+        val byDay = Instances.CONTENT_BY_DAY_URI.buildUpon().appendPath("$today").appendPath("$today").build()
+        return contentResolver.query(
+            byDay,
+            arrayOf(Instances.EVENT_ID, Instances.TITLE, Instances.BEGIN),
+            "${Instances.ALL_DAY} = 1 AND $eventFilter",
+            null,
+            "${Instances.TITLE} ASC",
+        )?.use { c ->
+            buildList { while (c.moveToNext()) add(CalendarEvent(c.getLong(0), c.getString(1).orEmpty(), c.getLong(2))) }
+        }.orEmpty()
     }
 
     // ponytail: 30 min in-memory throttle; persist the last result if cold starts without network matter
@@ -480,7 +506,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun TodayColumn() {
         val w = weather
-        if (w == null && nextEvent == null && nextAlarm == null) return
+        if (w == null && nextEvent == null && nextAlarm == null && allDayToday.isEmpty()) return
         Column(Modifier.padding(start = 12.dp, bottom = 16.dp)) {
             SubText("Today")
             w?.let {
@@ -488,14 +514,12 @@ class MainActivity : ComponentActivity() {
                 SubText("${it.high}° / ${it.low}°", color = TextSecondary, onClick = forecast)
                 SubText("Rain ${it.rainChance}%", color = TextSecondary, onClick = forecast)
             }
+            allDayToday.take(2).forEach { event ->
+                SubText("All day  ${event.title}", color = TextSecondary) { openEvent(event) }
+            }
             nextEvent?.let { event ->
                 val time = if (event.begin <= System.currentTimeMillis()) "Now" else timeText(event.begin)
-                SubText("$time  ${event.title}", color = TextSecondary) {
-                    launch(
-                        Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, event.id))
-                            .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, event.begin)
-                    )
-                }
+                SubText("$time  ${event.title}", color = TextSecondary) { openEvent(event) }
             }
             nextAlarm?.let { SubText("Alarm ${timeText(it)}", color = TextSecondary) { launch(Intent(AlarmClock.ACTION_SHOW_ALARMS)) } }
         }
@@ -507,6 +531,11 @@ class MainActivity : ComponentActivity() {
         .filter { it.key !in favorites && it.key !in hidden }
         .take(count)
         .toList()
+
+    private fun openEvent(event: CalendarEvent) = launch(
+        Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, event.id))
+            .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, event.begin)
+    )
 
     private fun calendarAt(millis: Long) =
         Intent(Intent.ACTION_VIEW, CalendarContract.CONTENT_URI.buildUpon().appendPath("time").appendPath("$millis").build())
