@@ -260,7 +260,6 @@ class MainActivity : ComponentActivity() {
                     }
                     if (explainGestures) {
                         GesturesDialog(
-                            buttonNavigation = usesButtonNavigation(),
                             onContinue = {
                                 explainGestures = false
                                 launch(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -1190,16 +1189,14 @@ private fun BatteryDialog(onUsage: () -> Unit, onDismiss: () -> Unit) {
 
 /** Accessibility needs a clear disclosure before sending the user to turn it on. */
 @Composable
-private fun GesturesDialog(buttonNavigation: Boolean, onContinue: () -> Unit, onDismiss: () -> Unit) = AlertDialog(
+private fun GesturesDialog(onContinue: () -> Unit, onDismiss: () -> Unit) = AlertDialog(
     onDismissRequest = onDismiss,
-    title = { Text(if (buttonNavigation) "Gestures" else "Double-tap to lock") },
+    title = { Text("Gestures") },
     text = {
         Text(
-            "Double-tap an empty spot on the home screen to lock the phone, like the power button.\n\n" +
-                (if (buttonNavigation) {
-                    "Also: swipe in from the left or right edge to go Back, swipe up from the bottom centre to go Home, " +
-                        "swipe up and hold for Recents.\n\n"
-                } else "") +
+            "Swipe in from the left or right edge to go Back, swipe up from the bottom centre to go Home, " +
+                "swipe up and hold for Recents. Double-tap an empty spot on the home screen to lock the phone, " +
+                "like the power button.\n\n" +
                 "This uses Android's Accessibility service only to trigger these actions. " +
                 "It doesn't read or collect anything on your screen.\n\n" +
                 "Next, turn on \"Minimalist Launcher gestures\" in Accessibility settings. If Android says it's a " +

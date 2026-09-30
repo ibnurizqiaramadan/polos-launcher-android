@@ -5,11 +5,8 @@ import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
 import android.content.res.Configuration
-import android.database.ContentObserver
 import android.graphics.PixelFormat
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
@@ -22,9 +19,11 @@ import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 /**
- * Navigation gestures for phones stuck on 3-button nav (HyperOS forces it with third-party launchers):
- * swipe in from a side edge = Back, swipe up from the bottom centre = Home, swipe up and hold = Recents.
- * Also backs the home screen's double-tap-to-lock on any phone.
+ * Navigation gestures, always on while the service is enabled (meant for 3-button nav, which HyperOS forces
+ * with third-party launchers): swipe in from a side edge = Back, swipe up from the bottom centre = Home,
+ * swipe up and hold = Recents. Also backs the home screen's double-tap-to-lock.
+ * On gesture-nav phones the system claims its own edge swipes first (our strip just gets a cancel), so
+ * nothing fires twice.
  * It only lays invisible touch strips over the screen edges and fires global actions; it never reads the screen.
  */
 class GestureService : AccessibilityService() {
@@ -39,20 +38,8 @@ class GestureService : AccessibilityService() {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && running?.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN) == true
     }
 
-    // switching navigation mode doesn't restart the service, so follow the settings that describe it
-    private val navigationChanged by lazy {
-        object : ContentObserver(Handler(Looper.getMainLooper())) {
-            override fun onChange(selfChange: Boolean) {
-                removeZones()
-                addZones()
-            }
-        }
-    }
-
     override fun onServiceConnected() {
         running = this
-        contentResolver.registerContentObserver(Settings.Global.getUriFor(MIUI_GESTURES), false, navigationChanged)
-        contentResolver.registerContentObserver(Settings.Secure.getUriFor(NAVIGATION_MODE), false, navigationChanged)
         addZones()
     }
 
@@ -65,7 +52,6 @@ class GestureService : AccessibilityService() {
 
     override fun onDestroy() {
         running = null
-        contentResolver.unregisterContentObserver(navigationChanged)
         removeZones()
         super.onDestroy()
     }
@@ -74,8 +60,6 @@ class GestureService : AccessibilityService() {
     override fun onInterrupt() {}
 
     private fun addZones() {
-        // gesture-nav phones already have these; there the service is only used for double-tap-to-lock
-        if (!usesButtonNavigation()) return
         val windows = getSystemService(WindowManager::class.java)
         val metrics = resources.displayMetrics
         fun dp(value: Int) = (value * metrics.density).roundToInt()
