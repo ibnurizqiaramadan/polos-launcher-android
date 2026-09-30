@@ -89,10 +89,12 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedTextField
@@ -119,6 +121,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -135,6 +138,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -445,12 +449,13 @@ class MainActivity : ComponentActivity() {
                             .clickable { media.controller?.packageName?.let(packageManager::getLaunchIntentForPackage)?.let(::launch) }
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SubText("Prev") { media.controller?.transportControls?.skipToPrevious() }
-                        SubText(if (track.playing) "Pause" else "Play", color = TextSecondary) {
+                    // play/pause is the main action: larger and brighter; IconButton gives 48dp targets + ripple
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        MediaButton(SkipPreviousIcon, "Previous", 28.dp, TextSecondary) { media.controller?.transportControls?.skipToPrevious() }
+                        MediaButton(if (track.playing) PauseIcon else Icons.Filled.PlayArrow, if (track.playing) "Pause" else "Play", 36.dp, TextPrimary) {
                             media.controller?.transportControls?.run { if (track.playing) pause() else play() }
                         }
-                        SubText("Next") { media.controller?.transportControls?.skipToNext() }
+                        MediaButton(SkipNextIcon, "Next", 28.dp, TextSecondary) { media.controller?.transportControls?.skipToNext() }
                     }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -558,6 +563,10 @@ private fun InfoText(text: String, onClick: (() -> Unit)? = null) = Text(
 
 // "14:00" today, "Tue 09:00" otherwise
 private fun timeText(millis: Long) = DateFormat.format(if (DateUtils.isToday(millis)) "HH:mm" else "EEE HH:mm", millis)
+
+@Composable
+private fun MediaButton(icon: ImageVector, label: String, size: Dp, tint: Color, onClick: () -> Unit) =
+    IconButton(onClick = onClick) { Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(size)) }
 
 @Composable
 private fun SubText(

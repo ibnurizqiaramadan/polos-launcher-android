@@ -10,6 +10,9 @@ import android.service.notification.NotificationListenerService
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.materialIcon
+import androidx.compose.material.icons.materialPath
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.core.app.NotificationManagerCompat
 
 /** Never reads notifications: Android only hands out media sessions to apps with an enabled listener. */
@@ -67,6 +70,35 @@ class MediaWatcher(context: Context) {
             )
         } else {
             null
+        }
+    }
+}
+
+// Material "filled" media icons missing from material-icons-core (it only has PlayArrow); paths are Google's
+// originals, copied rather than pulling in the multi-megabyte material-icons-extended for three glyphs.
+val PauseIcon: ImageVector by lazy {
+    materialIcon("Filled.Pause") {
+        materialPath {
+            moveTo(6f, 19f); horizontalLineToRelative(4f); verticalLineTo(5f); horizontalLineTo(6f); verticalLineToRelative(14f); close()
+            moveTo(14f, 5f); verticalLineToRelative(14f); horizontalLineToRelative(4f); verticalLineTo(5f); horizontalLineToRelative(-4f); close()
+        }
+    }
+}
+
+val SkipNextIcon: ImageVector by lazy {
+    materialIcon("Filled.SkipNext") {
+        materialPath {
+            moveTo(6f, 18f); lineToRelative(8.5f, -6f); lineTo(6f, 6f); verticalLineToRelative(12f); close()
+            moveTo(16f, 6f); verticalLineToRelative(12f); horizontalLineToRelative(2f); verticalLineTo(6f); horizontalLineToRelative(-2f); close()
+        }
+    }
+}
+
+val SkipPreviousIcon: ImageVector by lazy {
+    materialIcon("Filled.SkipPrevious") {
+        materialPath {
+            moveTo(6f, 6f); horizontalLineToRelative(2f); verticalLineToRelative(12f); horizontalLineTo(6f); close()
+            moveTo(9.5f, 12f); lineToRelative(8.5f, 6f); verticalLineTo(6f); close()
         }
     }
 }
