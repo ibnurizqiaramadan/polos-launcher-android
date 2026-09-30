@@ -5,8 +5,11 @@ import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
 import android.content.res.Configuration
+import android.database.ContentObserver
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
@@ -36,8 +39,20 @@ class GestureService : AccessibilityService() {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && running?.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN) == true
     }
 
+    // switching navigation mode doesn't restart the service, so follow the settings that describe it
+    private val navigationChanged by lazy {
+        object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                removeZones()
+                addZones()
+            }
+        }
+    }
+
     override fun onServiceConnected() {
         running = this
+        contentResolver.registerContentObserver(Settings.Global.getUriFor(MIUI_GESTURES), false, navigationChanged)
+        contentResolver.registerContentObserver(Settings.Secure.getUriFor(NAVIGATION_MODE), false, navigationChanged)
         addZones()
     }
 
@@ -50,6 +65,7 @@ class GestureService : AccessibilityService() {
 
     override fun onDestroy() {
         running = null
+        contentResolver.unregisterContentObserver(navigationChanged)
         removeZones()
         super.onDestroy()
     }
@@ -96,8 +112,19 @@ fun Context.gesturesEnabled(): Boolean {
         ?.any { ComponentName.unflattenFromString(it) == ours } == true
 }
 
-// "navigation_mode" isn't public API: 0 = 3-button, 1 = 2-button, 2 = gestures; missing means assume buttons
-fun Context.usesButtonNavigation() = Settings.Secure.getInt(contentResolver, "navigation_mode", 0) == 0
+/**
+ * Whether the phone is on button navigation. HyperOS/MIUI keep their own switch (force_fsg_nav_bar: 1 = full
+ * screen gestures) and can leave AOSP's "navigation_mode" stale after toggling, showing 3 buttons while it
+ * still says gestures, so their switch wins when it exists. Elsewhere "navigation_mode" (not public API):
+ * 0 = 3-button, 1 = 2-button, 2 = gestures; missing means buttons.
+ */
+fun Context.usesButtonNavigation(): Boolean {
+    Settings.Global.getString(contentResolver, MIUI_GESTURES)?.let { return it == "0" }
+    return Settings.Secure.getInt(contentResolver, NAVIGATION_MODE, 0) == 0
+}
+
+private const val MIUI_GESTURES = "force_fsg_nav_bar"
+private const val NAVIGATION_MODE = "navigation_mode"
 
 private const val THRESHOLD_DP = 40
 private const val HOLD_MS = 300L
