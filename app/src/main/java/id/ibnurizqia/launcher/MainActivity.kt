@@ -95,6 +95,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedTextField
@@ -156,11 +157,15 @@ import androidx.core.content.edit
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import java.time.LocalDate
 import kotlin.math.exp
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -506,7 +511,8 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun TodayColumn() {
         val w = weather
-        if (w == null && nextEvent == null && nextAlarm == null && allDayToday.isEmpty()) return
+        val statLines = rememberSystemStatLines()
+        if (w == null && nextEvent == null && nextAlarm == null && allDayToday.isEmpty() && statLines.isEmpty()) return
         Column(Modifier.padding(start = 12.dp, bottom = 16.dp)) {
             SubText("Today")
             w?.let {
@@ -522,7 +528,26 @@ class MainActivity : ComponentActivity() {
                 SubText("$time  ${event.title}", color = TextSecondary) { openEvent(event) }
             }
             nextAlarm?.let { SubText("Alarm ${timeText(it)}", color = TextSecondary) { launch(Intent(AlarmClock.ACTION_SHOW_ALARMS)) } }
+            statLines.forEach { SubText(it, color = TextSecondary, tabular = true) }
         }
+    }
+
+    // Refreshed every 5 s only while home is actually on screen: repeatOnLifecycle stops the loop when the
+    // screen goes off or another app (or the drawer, which disposes this) takes over. The state holds the
+    // shown text, so an unchanged reading causes no recomposition or redraw at all.
+    @Composable
+    private fun rememberSystemStatLines(): List<String> {
+        var lines by remember { mutableStateOf(emptyList<String>()) }
+        val lifecycle = LocalLifecycleOwner.current.lifecycle
+        LaunchedEffect(lifecycle) {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                while (true) {
+                    lines = withContext(Dispatchers.IO) { systemStats().let { listOfNotNull(it.ramText(), it.cpuText()) } }
+                    delay(5_000)
+                }
+            }
+        }
+        return lines
     }
 
     // last few apps used that aren't already a favorite (or hidden)
@@ -640,10 +665,12 @@ private fun SubText(
     text: String,
     modifier: Modifier = Modifier,
     color: Color = TextMuted,
+    tabular: Boolean = false, // fixed-width digits for numbers that keep changing, so the line doesn't wobble
     onClick: (() -> Unit)? = null,
 ) = Text(
     text = text,
     color = color,
+    style = if (tabular) LocalTextStyle.current.copy(fontFeatureSettings = "tnum") else LocalTextStyle.current,
     fontSize = 14.sp,
     maxLines = 1,
     overflow = TextOverflow.Ellipsis,
