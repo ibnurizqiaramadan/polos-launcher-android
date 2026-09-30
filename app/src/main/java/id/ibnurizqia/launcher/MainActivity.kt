@@ -35,11 +35,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseInCubic
 import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
@@ -47,7 +46,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -79,6 +77,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -90,15 +89,16 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -117,13 +117,16 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -177,6 +180,7 @@ private val TextPrimary = Color.White
 private val TextSecondary = Color(0xFFBDBDBD) // 11:1
 private val TextMuted = Color(0xFF8C8C8C) // 6.2:1
 private val SurfaceDim = Color(0xFF121212) // barely-lit fill for the search field
+private val SurfaceRaised = Color(0xFF1F1F1F) // menu segments: lifted just enough off pure black
 
 /** Long-press menu content for one app; call `close` to dismiss it. */
 private typealias AppMenu = @Composable (app: App, close: () -> Unit) -> Unit
@@ -625,12 +629,18 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun Menu(app: App, close: () -> Unit) {
         val favorite = app.key in favorites
-        if (favorite || favorites.size < MAX_FAVORITES) {
-            MenuItem(if (favorite) "Remove from home" else "Add to home", close) { toggleFavorite(app) }
-        }
-        MenuItem("Rename", close) { renaming = app }
-        MenuItem(if (app.key in hidden) "Unhide" else "Hide", close) { toggleHidden(app) }
-        MenuItem("App info", close) { openInfo(app) }
+        val isHidden = app.key in hidden
+        MenuHeader(app)
+        MenuGroup(
+            close,
+            listOfNotNull(
+                MenuAction(Icons.Filled.Home, if (favorite) "Remove from home" else "Add to home") { toggleFavorite(app) }
+                    .takeIf { favorite || favorites.size < MAX_FAVORITES },
+                MenuAction(Icons.Filled.Edit, "Rename") { renaming = app },
+                MenuAction(if (isHidden) VisibilityIcon else VisibilityOffIcon, if (isHidden) "Unhide" else "Hide") { toggleHidden(app) },
+            ),
+        )
+        MenuGroup(close, listOf(MenuAction(Icons.Filled.Info, "App info") { openInfo(app) }))
     }
 
     private fun toggleFavorite(app: App) {
@@ -1064,8 +1074,9 @@ private fun AppItem(
 }
 
 /**
- * A Material-looking menu that opens up and to the left of the finger so the thumb never covers it,
- * moving right / below only when there's no room. Its parent must be a zero-size anchor at the touch point.
+ * Android 16 (Material 3 Expressive) style long-press menu: separate rounded segments on black instead of
+ * one flat sheet, springing out from the finger. Opens up and to the left of the finger so the thumb never
+ * covers it, moving right / below only when there's no room. Its parent must be a zero-size anchor at the touch point.
  */
 @Composable
 private fun FingerMenu(onDismiss: () -> Unit, content: @Composable () -> Unit) {
@@ -1077,20 +1088,93 @@ private fun FingerMenu(onDismiss: () -> Unit, content: @Composable () -> Unit) {
     val placement = remember(density, top, bottom) {
         with(density) { AwayFromFinger(gap = 16.dp.roundToPx(), margin = 8.dp.roundToPx(), top = top, bottom = bottom) }
     }
-    val shown = remember { MutableTransitionState(false) }.apply { targetState = true }
+    val appear = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { appear.animateTo(1f, spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow)) }
     Popup(popupPositionProvider = placement, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
-        AnimatedVisibility(shown, enter = fadeIn(tween(120)) + scaleIn(tween(120), initialScale = 0.9f)) {
-            Surface(
-                shape = MenuDefaults.shape,
-                color = MenuDefaults.containerColor,
-                tonalElevation = MenuDefaults.TonalElevation,
-                shadowElevation = MenuDefaults.ShadowElevation,
-            ) {
-                Column(Modifier.padding(vertical = 8.dp).width(IntrinsicSize.Max)) { content() }
-            }
+        Column(
+            Modifier
+                .graphicsLayer {
+                    transformOrigin = placement.origin // the finger, wherever the menu ended up
+                    scaleX = 0.8f + 0.2f * appear.value // the spring overshoots a touch, then settles
+                    scaleY = scaleX
+                    alpha = appear.value.coerceIn(0f, 1f)
+                }
+                .width(IntrinsicSize.Max)
+                .widthIn(min = 232.dp, max = 288.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) { content() }
+    }
+}
+
+class MenuAction(val icon: ImageVector, val label: String, val onClick: () -> Unit)
+
+// which app this is about: the name, and the package that tells twins apart
+@Composable
+private fun MenuHeader(app: App) = Column(
+    Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(SegmentOuter))
+        .background(SurfaceRaised)
+        .padding(horizontal = 20.dp, vertical = 14.dp)
+) {
+    Text(app.label, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Text(app.info.componentName.packageName, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+}
+
+// connected segments: 2dp apart, big outer corners, small inner ones (the Android 16 grouped-list look)
+@Composable
+private fun MenuGroup(close: () -> Unit, actions: List<MenuAction>) = Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    actions.forEachIndexed { i, action ->
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(segmentShape(first = i == 0, last = i == actions.lastIndex))
+                .background(SurfaceRaised)
+                .clickable { close(); action.onClick() }
+                .padding(horizontal = 20.dp, vertical = 14.dp), // ~50dp tall rows
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(action.icon, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(16.dp))
+            Text(action.label, fontSize = 15.sp)
         }
     }
 }
+
+private val SegmentOuter = 20.dp
+private val SegmentInner = 4.dp
+
+private fun segmentShape(first: Boolean, last: Boolean) = RoundedCornerShape(
+    topStart = if (first) SegmentOuter else SegmentInner,
+    topEnd = if (first) SegmentOuter else SegmentInner,
+    bottomStart = if (last) SegmentOuter else SegmentInner,
+    bottomEnd = if (last) SegmentOuter else SegmentInner,
+)
+
+// Material "visibility" / "visibility_off" (filled), which material-icons-core doesn't ship
+private val VisibilityIcon by lazy {
+    svgIcon(
+        "Filled.Visibility",
+        "M12,4.5C7,4.5 2.73,7.61 1,12c1.73,4.39 6,7.5 11,7.5s9.27,-3.11 11,-7.5c-1.73,-4.39 -6,-7.5 -11,-7.5z" +
+            "M12,17c-2.76,0 -5,-2.24 -5,-5s2.24,-5 5,-5 5,2.24 5,5 -2.24,5 -5,5zM12,9c-1.66,0 -3,1.34 -3,3s1.34,3 3,3 3,-1.34 3,-3 -1.34,-3 -3,-3z",
+    )
+}
+private val VisibilityOffIcon by lazy {
+    svgIcon(
+        "Filled.VisibilityOff",
+        "M12,7c2.76,0 5,2.24 5,5 0,0.65 -0.13,1.26 -0.36,1.83l2.92,2.92c1.51,-1.26 2.7,-2.89 3.43,-4.75 " +
+            "-1.73,-4.39 -6,-7.5 -11,-7.5 -1.4,0 -2.74,0.25 -3.98,0.7l2.16,2.16C10.74,7.13 11.35,7 12,7z" +
+            "M2,4.27l2.28,2.28 0.46,0.46C3.08,8.3 1.78,10.02 1,12c1.73,4.39 6,7.5 11,7.5 1.55,0 3.03,-0.3 4.38,-0.84" +
+            "l0.42,0.42L19.73,22 21,20.73 3.27,3 2,4.27z" +
+            "M7.53,9.8l1.55,1.55c-0.05,0.21 -0.08,0.43 -0.08,0.65 0,1.66 1.34,3 3,3 0.22,0 0.44,-0.03 0.65,-0.08" +
+            "l1.55,1.55c-0.67,0.33 -1.41,0.53 -2.2,0.53 -2.76,0 -5,-2.24 -5,-5 0,-0.79 0.2,-1.53 0.53,-2.2z" +
+            "M11.84,9.02l3.15,3.15 0.02,-0.16c0,-1.66 -1.34,-3 -3,-3l-0.17,0.01z",
+    )
+}
+
+private fun svgIcon(name: String, pathData: String) = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
+    .addPath(addPathNodes(pathData), fill = SolidColor(Color.Black))
+    .build()
 
 /**
  * Beside the finger, preferring its left (a right thumb comes in from the bottom right), then its right;
@@ -1103,6 +1187,10 @@ private class AwayFromFinger(
     private val top: Int, // status bar
     private val bottom: Int, // navigation bar
 ) : PopupPositionProvider {
+    /** The finger relative to the placed menu, so it can grow out of that point. */
+    var origin by mutableStateOf(TransformOrigin.Center)
+        private set
+
     override fun calculatePosition(
         anchorBounds: IntRect,
         windowSize: IntSize,
@@ -1127,13 +1215,14 @@ private class AwayFromFinger(
             above >= minY -> above
             else -> (fingerY + gap).coerceIn(minY, maxY)
         }
-        return IntOffset(x ?: left.coerceIn(margin, maxX), y)
+        val placedX = x ?: left.coerceIn(margin, maxX)
+        origin = TransformOrigin(
+            ((fingerX - placedX).toFloat() / width).coerceIn(0f, 1f),
+            ((fingerY - y).toFloat() / height).coerceIn(0f, 1f),
+        )
+        return IntOffset(placedX, y)
     }
 }
-
-@Composable
-private fun MenuItem(text: String, close: () -> Unit, action: () -> Unit) =
-    DropdownMenuItem(text = { Text(text) }, onClick = { close(); action() })
 
 @Composable
 private fun RenameDialog(app: App, onRename: (String) -> Unit, onDismiss: () -> Unit) {
