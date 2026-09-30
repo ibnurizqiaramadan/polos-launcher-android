@@ -6,6 +6,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.PixelFormat
+import android.os.Build
 import android.provider.Settings
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
@@ -20,12 +21,25 @@ import kotlin.math.roundToInt
 /**
  * Navigation gestures for phones stuck on 3-button nav (HyperOS forces it with third-party launchers):
  * swipe in from a side edge = Back, swipe up from the bottom centre = Home, swipe up and hold = Recents.
+ * Also backs the home screen's double-tap-to-lock on any phone.
  * It only lays invisible touch strips over the screen edges and fires global actions; it never reads the screen.
  */
 class GestureService : AccessibilityService() {
     private val zones = mutableListOf<View>()
 
-    override fun onServiceConnected() = addZones()
+    companion object {
+        // same-process handle so the launcher can ask for a lock; null while the service is off
+        private var running: GestureService? = null
+
+        /** Locks like the power button (biometrics keep working, unlike DevicePolicyManager.lockNow). False if unavailable. */
+        fun lockScreen(): Boolean =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && running?.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN) == true
+    }
+
+    override fun onServiceConnected() {
+        running = this
+        addZones()
+    }
 
     // strip sizes depend on screen size, so rebuild them on rotation
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -35,6 +49,7 @@ class GestureService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        running = null
         removeZones()
         super.onDestroy()
     }
@@ -43,6 +58,8 @@ class GestureService : AccessibilityService() {
     override fun onInterrupt() {}
 
     private fun addZones() {
+        // gesture-nav phones already have these; there the service is only used for double-tap-to-lock
+        if (!usesButtonNavigation()) return
         val windows = getSystemService(WindowManager::class.java)
         val metrics = resources.displayMetrics
         fun dp(value: Int) = (value * metrics.density).roundToInt()

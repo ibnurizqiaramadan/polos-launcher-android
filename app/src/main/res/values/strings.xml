@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="gesture_service_description">Swipe in from the left or right edge to go Back, swipe up from the bottom centre to go Home, swipe up and hold for Recents. Only performs these navigation actions; it does not read or collect anything on your screen.</string>
+    <string name="gesture_service_description">Double-tap an empty spot on the home screen to lock the phone. On 3-button navigation also: swipe in from the left or right edge to go Back, swipe up from the bottom centre to go Home, swipe up and hold for Recents. Only performs these actions; it does not read or collect anything on your screen.</string>
 </resources>

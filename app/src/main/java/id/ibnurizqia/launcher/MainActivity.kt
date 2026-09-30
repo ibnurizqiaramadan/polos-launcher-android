@@ -56,6 +56,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -185,6 +186,9 @@ class App(val key: String, val label: String, val info: LauncherActivityInfo, va
 
 class CalendarEvent(val id: Long, val title: String, val begin: Long)
 
+/** A "Show: ..." setup shortcut: tap to grant, long-press to stop offering it. */
+class Hint(val label: String, val onTap: () -> Unit, val onDismiss: () -> Unit)
+
 private const val LOCATION = Manifest.permission.ACCESS_COARSE_LOCATION
 private const val CALENDAR = Manifest.permission.READ_CALENDAR
 
@@ -206,7 +210,7 @@ class MainActivity : ComponentActivity() {
     private var screenTime by mutableStateOf<Long?>(null)
     private var recent by mutableStateOf(emptyList<String>()) // packages, most recently used first
     private val media by lazy { MediaWatcher(this) }
-    private var hints by mutableStateOf(emptyList<Pair<String, () -> Unit>>()) // setup hints: text to on-tap
+    private var hints by mutableStateOf(emptyList<Hint>())
     // the dialog pausing us means onResume re-reads every permission, so the result itself is unused
     private val requestPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
@@ -256,6 +260,7 @@ class MainActivity : ComponentActivity() {
                     }
                     if (explainGestures) {
                         GesturesDialog(
+                            buttonNavigation = usesButtonNavigation(),
                             onContinue = {
                                 explainGestures = false
                                 launch(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -309,18 +314,31 @@ class MainActivity : ComponentActivity() {
         return next.triggerTime.takeIf { creator in clocks }
     }
 
+    // Once Android stops showing the dialog (denied twice, or "don't ask again"), the switch lives in App info.
+    private fun askPermission(permission: String) {
+        val blocked = prefs.getBoolean("asked:$permission", false) && !shouldShowRequestPermissionRationale(permission)
+        prefs.edit { putBoolean("asked:$permission", true) }
+        if (blocked) {
+            launch(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
+        } else {
+            requestPermission.launch(permission)
+        }
+    }
+
     private fun granted(permission: String) = checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
     // a hint shows until tapped once; after that the user can still grant access from App info
+    // A hint stays while its access is missing, so a denied permission can always be fixed from home;
+    // long-pressing it hides it for good (the access can still be granted from App info).
     private fun refreshHints() {
         hints = buildList {
             fun hint(text: String, key: String, ready: Boolean, request: () -> Unit) {
-                if (!ready && !prefs.getBoolean("asked:$key", false)) {
-                    add(text to { prefs.edit { putBoolean("asked:$key", true) }; request() })
+                if (!ready && !prefs.getBoolean("dismissed:$key", false)) {
+                    add(Hint(text, onTap = request, onDismiss = { prefs.edit { putBoolean("dismissed:$key", true) }; refreshHints() }))
                 }
             }
-            hint("weather", LOCATION, granted(LOCATION)) { requestPermission.launch(LOCATION) }
-            hint("events", CALENDAR, granted(CALENDAR)) { requestPermission.launch(CALENDAR) }
+            hint("weather", LOCATION, granted(LOCATION)) { askPermission(LOCATION) }
+            hint("events", CALENDAR, granted(CALENDAR)) { askPermission(CALENDAR) }
             hint("screen time", "usage", hasUsageAccess()) {
                 // straight to this app's toggle where supported, else the full list
                 runCatching { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.fromParts("package", packageName, null))) }
@@ -432,6 +450,10 @@ class MainActivity : ComponentActivity() {
         Column(
             Modifier
                 .fillMaxSize()
+                // double-tap an empty spot to lock; taps on the clock, favorites etc. are theirs, not this
+                .pointerInput(Unit) {
+                    detectTapGestures(onDoubleTap = { if (!GestureService.lockScreen()) explainGestures = true })
+                }
                 .pointerInput(Unit) {
                     val threshold = 80.dp.toPx()
                     var drag = 0f
@@ -470,7 +492,7 @@ class MainActivity : ComponentActivity() {
                 if (hints.isNotEmpty()) {
                     FlowRow(horizontalArrangement = Arrangement.Center) {
                         SubText("Show:")
-                        hints.forEach { (label, onTap) -> SubText(label, color = TextSecondary, onClick = onTap) }
+                        hints.forEach { SubText(it.label, color = TextSecondary, onLongClick = it.onDismiss, onClick = it.onTap) }
                     }
                 }
             }
@@ -688,6 +710,7 @@ private fun SubText(
     modifier: Modifier = Modifier,
     color: Color = TextMuted,
     tabular: Boolean = false, // fixed-width digits for numbers that keep changing, so the line doesn't wobble
+    onLongClick: (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) = Text(
     text = text,
@@ -697,7 +720,13 @@ private fun SubText(
     maxLines = 1,
     overflow = TextOverflow.Ellipsis,
     modifier = modifier
-        .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+        .then(
+            when {
+                onClick != null && onLongClick != null -> Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                onClick != null -> Modifier.clickable(onClick = onClick)
+                else -> Modifier
+            }
+        )
         .padding(horizontal = 12.dp, vertical = 8.dp), // tall enough to hit; Compose extends it to 48dp
 )
 
@@ -1161,14 +1190,17 @@ private fun BatteryDialog(onUsage: () -> Unit, onDismiss: () -> Unit) {
 
 /** Accessibility needs a clear disclosure before sending the user to turn it on. */
 @Composable
-private fun GesturesDialog(onContinue: () -> Unit, onDismiss: () -> Unit) = AlertDialog(
+private fun GesturesDialog(buttonNavigation: Boolean, onContinue: () -> Unit, onDismiss: () -> Unit) = AlertDialog(
     onDismissRequest = onDismiss,
-    title = { Text("Navigation gestures") },
+    title = { Text(if (buttonNavigation) "Gestures" else "Double-tap to lock") },
     text = {
         Text(
-            "Swipe in from the left or right edge to go Back, swipe up from the bottom centre to go Home, " +
-                "swipe up and hold for Recents.\n\n" +
-                "This uses Android's Accessibility service only to trigger those three actions. " +
+            "Double-tap an empty spot on the home screen to lock the phone, like the power button.\n\n" +
+                (if (buttonNavigation) {
+                    "Also: swipe in from the left or right edge to go Back, swipe up from the bottom centre to go Home, " +
+                        "swipe up and hold for Recents.\n\n"
+                } else "") +
+                "This uses Android's Accessibility service only to trigger these actions. " +
                 "It doesn't read or collect anything on your screen.\n\n" +
                 "Next, turn on \"Minimalist Launcher gestures\" in Accessibility settings. If Android says it's a " +
                 "restricted setting, first open App info > \u22ee > Allow restricted settings."
