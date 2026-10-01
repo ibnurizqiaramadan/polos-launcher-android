@@ -1522,7 +1522,7 @@ private fun GesturesDialog(onContinue: () -> Unit, onDismiss: () -> Unit) = Aler
                 "like the power button.\n\n" +
                 "This uses Android's Accessibility service only to trigger these actions. " +
                 "It doesn't read or collect anything on your screen.\n\n" +
-                "Next, turn on \"Minimalist Launcher gestures\" in Accessibility settings. If Android says it's a " +
+                "Next, turn on \"Polos gestures\" in Accessibility settings. If Android says it's a " +
                 "restricted setting, first open App info > \u22ee > Allow restricted settings."
         )
     },
@@ -1634,7 +1634,7 @@ private fun SettingsPage(
                 SettingRow("Permissions", "Location, calendar and other access", onClick = onPermissions),
             ),
         )
-        version?.let { Text("Minimalist Launcher $it", fontSize = 14.sp, color = TextMuted, modifier = Modifier.padding(start = 16.dp, top = 24.dp)) }
+        version?.let { Text("Polos $it", fontSize = 14.sp, color = TextMuted, modifier = Modifier.padding(start = 16.dp, top = 24.dp)) }
     }
 }
 

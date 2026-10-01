@@ -27,8 +27,8 @@
     </queries>
 
     <application
-        android:label="Minimalist Launcher"
-        android:theme="@style/Theme.MinimalistLauncher">
+        android:label="Polos"
+        android:theme="@style/Theme.Polos">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -47,7 +47,7 @@
         <service
             android:name=".GestureService"
             android:exported="false"
-            android:label="Minimalist Launcher gestures"
+            android:label="Polos gestures"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
@@ -61,7 +61,7 @@
         <service
             android:name=".MediaListener"
             android:exported="true"
-            android:label="Minimalist Launcher music"
+            android:label="Polos music"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />

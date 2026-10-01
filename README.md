@@ -1,6 +1,6 @@
-# Minimalist Launcher Android (Zen / Clean Home)
+# Polos
 
-Project ini disiapkan untuk pengembangan **Minimalist Android Launcher** (Home screen replacement) berbasis native **Kotlin + Jetpack Compose**.
+Launcher Android minimalis: hitam polos, teks saja. Home screen replacement berbasis native **Kotlin + Jetpack Compose**. Package `id.ibnurizqia.launcher`.
 
 ## Rekomendasi Tech Stack
 - **Language:** Kotlin 2.x
@@ -19,7 +19,7 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
     android:launchMode="singleTask"
     android:clearTaskOnLaunch="true"
     android:stateNotNeeded="true"
-    android:theme="@style/Theme.MinimalistLauncher">
+    android:theme="@style/Theme.Polos">
     <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.HOME" />
@@ -47,7 +47,7 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 4. **Transparent Status/Nav Bar (Edge-to-Edge):**
    - Compose: `enableEdgeToEdge()` + WindowInsets handling agar wallpaper sistem tetap tembus pandang jika diinginkan.
 
-## Fitur Minimalist Launcher yang Direkomendasikan
+## Fitur
 - [x] Daftar aplikasi teks vertikal A-Z (tanpa icon yang mendistraksi)
 - [ ] Opsi toggle icon monochrome
 - [x] Alphabet fast scroller (wave) di app drawer
@@ -78,7 +78,7 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 - **Long press** area kosong di home (atau "Launcher settings" paling bawah drawer): halaman Settings, semua perubahan langsung berlaku
 - **Drag huruf** di kanan drawer (# A–Z penuh setinggi list): lompat ke huruf itu; huruf redup = tidak ada app, lompat ke huruf berikutnya
 - App tersembunyi ada di "Hidden apps (n)" paling bawah drawer
-- Build & install: `./gradlew installDebug`, lalu tekan Home dan pilih "Minimalist Launcher"
+- Build & install: `./gradlew installDebug`, lalu tekan Home dan pilih "Polos"
 
 ---
 *Environment coding-server-0: Java OpenJDK 21 siap pakai.*

@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "MinimalistLauncher"
+rootProject.name = "Polos"
 include(":app")
