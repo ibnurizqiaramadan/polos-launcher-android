@@ -34,8 +34,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseInCubic
 import androidx.compose.animation.core.EaseOutCubic
@@ -47,13 +47,15 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -73,6 +75,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -88,12 +91,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
@@ -101,19 +107,17 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.BottomSheetDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -128,12 +132,16 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -149,6 +157,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -222,7 +232,8 @@ class MainActivity : ComponentActivity() {
     private var showBattery by mutableStateOf(false)
     private var drawerOpen by mutableStateOf(false)
     private var settingsOpen by mutableStateOf(false)
-    private var wallpaper by mutableStateOf(Wallpaper.Black)
+    private val settings by lazy { LauncherSettings(prefs) }
+    private var navGestures by mutableStateOf(false) // our accessibility service is on
     private var weather by mutableStateOf<Weather?>(null)
     private var weatherFetchedAt = 0L
     private var nextAlarm by mutableStateOf<Long?>(null)
@@ -240,42 +251,64 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(SystemBarStyle.dark(TRANSPARENT), SystemBarStyle.dark(TRANSPARENT))
         favorites = prefs.getString("favorites", "")!!.lines().filter { it.isNotEmpty() }
         hidden = prefs.getStringSet("hidden", emptySet())!!.toSet()
-        wallpaper = Wallpaper.entries.find { it.name == prefs.getString("wallpaper", null) } ?: Wallpaper.Black
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(Modifier.fillMaxSize(), color = Color.Black, contentColor = TextPrimary) {
                     val menu: AppMenu = { app, close -> Menu(app, close) }
                     BackHandler { drawerOpen = false } // home screen: back never leaves the launcher
-                    // behind home and drawer alike, so opening the drawer doesn't flash the pattern away
-                    Crossfade(wallpaper, animationSpec = tween(300), label = "wallpaper") { Box(Modifier.fillMaxSize().wallpaper(it)) }
-                    AnimatedContent(
-                        targetState = drawerOpen,
-                        transitionSpec = {
-                            if (targetState) {
-                                // drawer rises from below (where the swipe came from) while home fades back
-                                (slideInVertically(tween(250, easing = EaseOutCubic)) { it / 8 } + fadeIn(tween(250))) togetherWith
-                                    fadeOut(tween(150))
-                            } else {
-                                // leaves a bit faster than it came, staying on top while it slides away
-                                (fadeIn(tween(200)) togetherWith
-                                    (slideOutVertically(tween(180, easing = EaseInCubic)) { it / 8 } + fadeOut(tween(180))))
-                                    .apply { targetContentZIndex = -1f }
+                    val drawer by animateFloatAsState(if (drawerOpen) 1f else 0f, tween(if (drawerOpen) 250 else 180), label = "drawer")
+                    val blur = settings.blur.on && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    // Home (wallpaper included) stays put under the drawer, sinking back as it opens: blurred and
+                    // dimmed, or with blur off simply faded to black, which is also the battery-friendliest.
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                val radius = drawer * 24.dp.toPx()
+                                renderEffect = if (blur && radius >= 1f) BlurEffect(radius, radius, TileMode.Decal) else null
                             }
-                        },
-                        label = "drawer",
-                    ) { open ->
-                        if (open) {
+                            .drawWithContent {
+                                drawContent()
+                                drawRect(Color.Black, alpha = drawer * if (blur) 0.6f else 1f)
+                            }
+                    ) {
+                        Crossfade(settings.wallpaper, animationSpec = tween(300), label = "wallpaper") { Box(Modifier.fillMaxSize().wallpaper(it)) }
+                        HomeScreen(menu)
+                    }
+                    AnimatedVisibility(
+                        visible = drawerOpen,
+                        // rises from below, where the swipe came from; leaves a bit faster than it came
+                        enter = slideInVertically(tween(250, easing = EaseOutCubic)) { it / 8 } + fadeIn(tween(250)),
+                        exit = slideOutVertically(tween(180, easing = EaseInCubic)) { it / 8 } + fadeOut(tween(180)),
+                    ) {
+                        // pointerInput: touches anywhere on the drawer, even its empty edges, stay off the home below
+                        Box(Modifier.fillMaxSize().pointerInput(Unit) {}) {
                             AppList(
-                                apps, hidden, recentApps(3),
+                                apps, hidden,
+                                recent = if (settings.recent.on) recentApps(3) else emptyList(),
+                                showIndex = settings.index.on,
+                                autoKeyboard = settings.keyboard.on,
                                 onOpen = ::open,
                                 onClose = { drawerOpen = false },
-                                // settings sit over home, where the wallpaper preview is the real thing
                                 onSettings = { drawerOpen = false; settingsOpen = true },
                                 menu = menu,
                             )
-                        } else {
-                            HomeScreen(menu)
                         }
+                    }
+                    AnimatedVisibility(
+                        visible = settingsOpen,
+                        // a page further in: slides in from the side, back slides it out the same way
+                        enter = slideInHorizontally(tween(250, easing = EaseOutCubic)) { it / 10 } + fadeIn(tween(250)),
+                        exit = slideOutHorizontally(tween(180, easing = EaseInCubic)) { it / 10 } + fadeOut(tween(180)),
+                    ) {
+                        SettingsPage(
+                            settings,
+                            navGestures = navGestures,
+                            onGestures = { explainGestures = true },
+                            onDefaultHome = { launch(Intent(Settings.ACTION_HOME_SETTINGS)) },
+                            onPermissions = { launch(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))) },
+                            onBack = ::closeSettings,
+                        )
                     }
                     renaming?.let { app ->
                         RenameDialog(app, onRename = { rename(app, it); renaming = null }, onDismiss = { renaming = null })
@@ -287,13 +320,6 @@ class MainActivity : ComponentActivity() {
                                 launch(Intent(Intent.ACTION_POWER_USAGE_SUMMARY))
                             },
                             onDismiss = { showBattery = false },
-                        )
-                    }
-                    if (settingsOpen) {
-                        SettingsSheet(
-                            wallpaper,
-                            onWallpaper = { wallpaper = it; prefs.edit { putString("wallpaper", it.name) } },
-                            onDismiss = { settingsOpen = false },
                         )
                     }
                     if (explainGestures) {
@@ -326,6 +352,7 @@ class MainActivity : ComponentActivity() {
         loadApps()
         refreshHints()
         refreshWeather()
+        navGestures = gesturesEnabled()
         nextAlarm = nextClockAlarm()
         if (granted(CALENDAR)) {
             lifecycleScope.launch {
@@ -374,16 +401,16 @@ class MainActivity : ComponentActivity() {
                     add(Hint(text, onTap = request, onDismiss = { prefs.edit { putBoolean("dismissed:$key", true) }; refreshHints() }))
                 }
             }
-            hint("weather", LOCATION, granted(LOCATION)) { askPermission(LOCATION) }
-            hint("events", CALENDAR, granted(CALENDAR)) { askPermission(CALENDAR) }
-            hint("screen time", "usage", hasUsageAccess()) {
+            if (settings.weather.on) hint("weather", LOCATION, granted(LOCATION)) { askPermission(LOCATION) }
+            if (settings.events.on) hint("events", CALENDAR, granted(CALENDAR)) { askPermission(CALENDAR) }
+            if (settings.screenTime.on) hint("screen time", "usage", hasUsageAccess()) {
                 // straight to this app's toggle where supported, else the full list
                 runCatching { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.fromParts("package", packageName, null))) }
                     .onFailure { launch(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
             }
             // only offered on 3-button phones; with system gestures it would just double up
             if (usesButtonNavigation()) hint("gestures", "gestures", gesturesEnabled()) { explainGestures = true }
-            hint("music", "media", hasNotificationAccess()) {
+            if (settings.music.on) hint("music", "media", hasNotificationAccess()) {
                 launch(
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                         Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
@@ -435,7 +462,7 @@ class MainActivity : ComponentActivity() {
 
     // ponytail: 30 min in-memory throttle; persist the last result if cold starts without network matter
     private fun refreshWeather() {
-        if (!granted(LOCATION) || System.currentTimeMillis() - weatherFetchedAt < 30 * 60_000) return
+        if (!settings.weather.on || !granted(LOCATION) || System.currentTimeMillis() - weatherFetchedAt < 30 * 60_000) return
         weatherFetchedAt = System.currentTimeMillis()
         lifecycleScope.launch {
             val result = runCatching { currentWeather() }.getOrNull()
@@ -480,7 +507,15 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         drawerOpen = false
+        closeSettings()
+    }
+
+    // hints and weather depend on what's switched on, so catch up with any change made in settings
+    private fun closeSettings() {
+        if (!settingsOpen) return
         settingsOpen = false
+        refreshHints()
+        refreshWeather()
     }
 
     @Composable
@@ -493,7 +528,7 @@ class MainActivity : ComponentActivity() {
                 // are theirs, not this
                 .pointerInput(Unit) {
                     detectTapGestures(
-                        onDoubleTap = { if (!GestureService.lockScreen()) explainGestures = true },
+                        onDoubleTap = { if (settings.doubleTapLock.on && !GestureService.lockScreen()) explainGestures = true },
                         onLongPress = {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             settingsOpen = true
@@ -508,7 +543,7 @@ class MainActivity : ComponentActivity() {
                         onDragEnd = {
                             when {
                                 drag < -threshold -> drawerOpen = true
-                                drag > threshold -> expandNotifications()
+                                drag > threshold && settings.swipeDown.on -> expandNotifications()
                             }
                         },
                         onVerticalDrag = { _, dy -> drag += dy },
@@ -524,18 +559,18 @@ class MainActivity : ComponentActivity() {
                 TextClock("EEEE, d MMMM", 18f, modifier = Modifier.clickable { launch(calendarAt(System.currentTimeMillis())) })
                 Spacer(Modifier.height(4.dp))
                 Row {
-                    weather?.let { w ->
+                    weather?.takeIf { settings.weather.on }?.let { w ->
                         // the place makes it clear which area this is for; tapping opens that area's forecast
                         InfoText(listOfNotNull(w.summary, w.place).joinToString(", ")) {
                             launch(Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, listOfNotNull("weather", w.place).joinToString(" ")))
                         }
-                        InfoText("·")
+                        if (settings.battery.on) InfoText("·")
                     }
-                    InfoText("${batteryLevel()}%") { showBattery = true }
+                    if (settings.battery.on) InfoText("${batteryLevel()}%") { showBattery = true }
                 }
                 Spacer(Modifier.height(12.dp))
                 // up here, under the weather: the header's free space absorbs it, so favorites never move
-                media.nowPlaying?.let { track ->
+                media.nowPlaying?.takeIf { settings.music.on }?.let { track ->
                     Spacer(Modifier.height(8.dp))
                     Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
@@ -558,7 +593,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 // all setup hints on one line instead of a stack of "Tap to show ..." rows
-                if (hints.isNotEmpty()) {
+                if (settings.hints.on && hints.isNotEmpty()) {
                     FlowRow(horizontalArrangement = Arrangement.Center) {
                         SubText("Show:")
                         hints.forEach { SubText(it.label, color = TextSecondary, onLongClick = it.onDismiss, onClick = it.onTap) }
@@ -574,10 +609,10 @@ class MainActivity : ComponentActivity() {
             }
             Spacer(Modifier.height(24.dp))
             Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                SubText("Phone", Modifier.align(Alignment.CenterStart)) { launch(Intent(Intent.ACTION_DIAL)) }
-                screenTime?.let { SubText("Screen time ${formatDuration(it)}", Modifier.align(Alignment.Center)) }
-                SubText("Camera", Modifier.align(Alignment.CenterEnd)) {
-                    launch(Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA))
+                if (settings.shortcuts.on) SubText("Phone", Modifier.align(Alignment.CenterStart)) { launch(Intent(Intent.ACTION_DIAL)) }
+                screenTime?.takeIf { settings.screenTime.on }?.let { SubText("Screen time ${formatDuration(it)}", Modifier.align(Alignment.Center)) }
+                if (settings.shortcuts.on) {
+                    SubText("Camera", Modifier.align(Alignment.CenterEnd)) { launch(Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)) }
                 }
             }
         }
@@ -586,9 +621,12 @@ class MainActivity : ComponentActivity() {
     // SubText pads 12dp; the extra 12dp lines these up with the 24dp app rows
     @Composable
     private fun TodayColumn() {
-        val w = weather
-        val device = rememberDeviceLines()
-        val hasToday = w != null || nextEvent != null || nextAlarm != null || allDayToday.isNotEmpty()
+        val w = weather.takeIf { settings.weather.on }
+        val event = nextEvent.takeIf { settings.events.on }
+        val allDay = if (settings.events.on) allDayToday else emptyList()
+        val alarm = nextAlarm.takeIf { settings.alarm.on }
+        val device = if (settings.device.on) rememberDeviceLines() else null // off: no polling at all
+        val hasToday = w != null || event != null || alarm != null || allDay.isNotEmpty()
         if (!hasToday && device == null) return
         Column(Modifier.padding(start = 12.dp, bottom = 16.dp)) {
             if (hasToday) SubText("Today")
@@ -597,14 +635,14 @@ class MainActivity : ComponentActivity() {
                 SubText("${it.high}° / ${it.low}°", color = TextSecondary, onClick = forecast)
                 SubText("Rain ${it.rainChance}%", color = TextSecondary, onClick = forecast)
             }
-            allDayToday.take(2).forEach { event ->
+            allDay.take(2).forEach { event ->
                 SubText("All day  ${event.title}", color = TextSecondary) { openEvent(event) }
             }
-            nextEvent?.let { event ->
+            event?.let { event ->
                 val time = if (event.begin <= System.currentTimeMillis()) "Now" else timeText(event.begin)
                 SubText("$time  ${event.title}", color = TextSecondary) { openEvent(event) }
             }
-            nextAlarm?.let { SubText("Alarm ${timeText(it)}", color = TextSecondary) { launch(Intent(AlarmClock.ACTION_SHOW_ALARMS)) } }
+            alarm?.let { SubText("Alarm ${timeText(it)}", color = TextSecondary) { launch(Intent(AlarmClock.ACTION_SHOW_ALARMS)) } }
             // grouped apart from the day's info; only the battery line has details behind it
             device?.let {
                 if (hasToday) Spacer(Modifier.height(12.dp))
@@ -808,12 +846,16 @@ private fun AppList(
     apps: List<App>,
     hidden: Set<String>,
     recent: List<App>,
+    showIndex: Boolean,
+    autoKeyboard: Boolean,
     onOpen: (App) -> Unit,
     onClose: () -> Unit,
     onSettings: () -> Unit,
     menu: AppMenu,
 ) {
     var query by remember { mutableStateOf("") }
+    val search = remember { FocusRequester() }
+    LaunchedEffect(Unit) { if (autoKeyboard) search.requestFocus() } // off by default: the keyboard waits for a tap
     var showHidden by remember { mutableStateOf(false) }
     BackHandler(showHidden) { showHidden = false }
     val shown = apps.filter { (it.key in hidden) == showHidden && it.label.contains(query, ignoreCase = true) }
@@ -875,7 +917,7 @@ private fun AppList(
                 }
             }
             // hidden while searching: results are short, and above the keyboard it'd be too cramped to hit
-            if (shown.isNotEmpty() && !searching && !WindowInsets.isImeVisible) {
+            if (showIndex && shown.isNotEmpty() && !searching && !WindowInsets.isImeVisible) {
                 AlphabetScroller(
                     firstIndex,
                     shown.lastIndex,
@@ -916,6 +958,7 @@ private fun AppList(
             // pill so it reads as an input, not a label
             modifier = Modifier
                 .fillMaxWidth()
+                .focusRequester(search)
                 .padding(horizontal = 16.dp, vertical = 12.dp)
                 .background(SurfaceDim, RoundedCornerShape(28.dp))
                 .padding(horizontal = 20.dp, vertical = 14.dp),
@@ -1461,31 +1504,164 @@ private fun GesturesDialog(onContinue: () -> Unit, onDismiss: () -> Unit) = Aler
 )
 
 /**
- * Launcher settings, for now just the wallpaper. Picking one applies it at once; the sheet covers only the
- * lower half, so the clock and weather above show the real result.
+ * Everything adjustable, in Android 16's grouped rounded rows. The page sits on the chosen wallpaper, so it
+ * previews it too. Changes apply at once; there's nothing to save.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SettingsSheet(wallpaper: Wallpaper, onWallpaper: (Wallpaper) -> Unit, onDismiss: () -> Unit) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = SurfaceDim,
-        contentColor = TextPrimary,
-        scrimColor = Color.Transparent, // a scrim would dim the very preview being judged
-        dragHandle = { BottomSheetDefaults.DragHandle(color = TextMuted) },
+private fun SettingsPage(
+    settings: LauncherSettings,
+    navGestures: Boolean,
+    onGestures: () -> Unit,
+    onDefaultHome: () -> Unit,
+    onPermissions: () -> Unit,
+    onBack: () -> Unit,
+) {
+    BackHandler(onBack = onBack)
+    val context = LocalContext.current
+    val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() }
+    val canBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .wallpaper(settings.wallpaper)
+            .safeDrawingPadding() // outside the scroll, so rows stop at the status bar instead of sliding under it
+            .verticalScroll(rememberScrollState())
+            .padding(start = 16.dp, end = 16.dp, bottom = 24.dp)
     ) {
-        Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 24.dp)) {
+        Row(Modifier.height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+            Spacer(Modifier.width(4.dp))
             Text("Settings", fontSize = 22.sp)
-            Spacer(Modifier.height(16.dp))
-            Text("Wallpaper", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
+        }
+        SectionTitle("Wallpaper")
+        Column(
+            Modifier
+                .clip(RoundedCornerShape(SegmentOuter))
+                .background(SurfaceRaised)
+                .padding(16.dp)
+                .selectableGroup(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             Text("Drawn by the launcher and kept mostly black, so AMOLED pixels stay off.", fontSize = 14.sp, color = TextMuted)
-            Spacer(Modifier.height(16.dp))
-            Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Wallpaper.entries.chunked(4).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        row.forEach { WallpaperTile(it, selected = it == wallpaper, Modifier.weight(1f)) { onWallpaper(it) } }
-                    }
+            Wallpaper.entries.chunked(4).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    row.forEach { WallpaperTile(it, selected = it == settings.wallpaper, Modifier.weight(1f)) { settings.pick(it) } }
+                }
+            }
+        }
+        SettingGroup(
+            "Home screen",
+            listOf(
+                settings.weather.row("Weather", "Conditions under the date, plus today's high, low and rain"),
+                settings.battery.row("Battery percentage"),
+                settings.music.row("Now playing", "Song and controls while music plays"),
+                settings.events.row("Calendar events", "All-day events and the next one coming up"),
+                settings.alarm.row("Next alarm"),
+                settings.device.row("Device stats", "RAM, CPU speed and battery current"),
+                settings.screenTime.row("Screen time"),
+                settings.shortcuts.row("Phone and Camera", "Shortcuts in the bottom corners"),
+                settings.hints.row("Setup hints", "The \"Show:\" line for features that still need access"),
+            ),
+        )
+        SettingGroup(
+            "App drawer",
+            listOf(
+                settings.blur.row(
+                    "Blur behind drawer",
+                    if (canBlur) "Home stays softly visible; off fades it to black" else "Needs Android 12 or newer",
+                    enabled = canBlur,
+                ),
+                settings.recent.row("Recent apps", "Three apps above the search field"),
+                settings.index.row("Alphabet index", "Letters along the right edge to jump through the list"),
+                settings.keyboard.row("Open keyboard right away", "Otherwise it waits until you tap search"),
+            ),
+        )
+        SettingGroup(
+            "Gestures",
+            listOf(
+                SettingRow("Navigation gestures", "Swipe in from the edges for Back, Home and Recents", value = if (navGestures) "On" else "Off", onClick = onGestures),
+                settings.doubleTapLock.row("Double-tap to lock", if (navGestures) "Double-tap an empty spot on home" else "Needs navigation gestures on"),
+                settings.swipeDown.row("Swipe down for notifications"),
+            ),
+        )
+        SettingGroup(
+            "Launcher",
+            listOf(
+                SettingRow("Default home app", "Choose which launcher the Home button opens", onClick = onDefaultHome),
+                SettingRow("Permissions", "Location, calendar and other access", onClick = onPermissions),
+            ),
+        )
+        version?.let { Text("Minimalist Launcher $it", fontSize = 14.sp, color = TextMuted, modifier = Modifier.padding(start = 16.dp, top = 24.dp)) }
+    }
+}
+
+/** One settings row: a switch when [checked] is set, otherwise a link, optionally showing its current [value]. */
+private class SettingRow(
+    val title: String,
+    val summary: String? = null,
+    val checked: Boolean? = null,
+    val value: String? = null,
+    val enabled: Boolean = true,
+    val onClick: () -> Unit,
+)
+
+private fun LauncherSettings.Option.row(title: String, summary: String? = null, enabled: Boolean = true) =
+    SettingRow(title, summary, checked = on, enabled = enabled, onClick = ::toggle)
+
+@Composable
+private fun SectionTitle(text: String) = Text(
+    text,
+    fontSize = 14.sp,
+    fontWeight = FontWeight.Medium,
+    color = TextSecondary,
+    modifier = Modifier.padding(start = 16.dp, top = 24.dp, bottom = 8.dp).semantics { heading() },
+)
+
+// monochrome like the rest of the launcher: white when on, outlined grey when off
+private val SwitchColors
+    @Composable get() = SwitchDefaults.colors(
+        checkedThumbColor = Color.Black,
+        checkedTrackColor = TextPrimary,
+        checkedBorderColor = TextPrimary,
+        uncheckedThumbColor = TextMuted,
+        uncheckedTrackColor = Color.Black,
+        uncheckedBorderColor = TextMuted,
+    )
+
+// the whole row is the touch target (64dp+); the switch only shows the state, so it takes no clicks itself
+@Composable
+private fun SettingGroup(title: String, rows: List<SettingRow>) {
+    SectionTitle(title)
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        rows.forEachIndexed { i, row ->
+            val action = if (row.checked != null) {
+                Modifier.toggleable(row.checked, enabled = row.enabled, role = Role.Switch) { row.onClick() }
+            } else {
+                Modifier.clickable(enabled = row.enabled, onClick = row.onClick)
+            }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(segmentShape(first = i == 0, last = i == rows.lastIndex))
+                    .background(SurfaceRaised)
+                    .then(action)
+                    .alpha(if (row.enabled) 1f else 0.38f)
+                    .heightIn(min = 64.dp)
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(row.title, fontSize = 16.sp)
+                    row.summary?.let { Text(it, fontSize = 14.sp, color = TextMuted) }
+                }
+                row.checked?.let {
+                    Spacer(Modifier.width(16.dp))
+                    Switch(checked = it, onCheckedChange = null, enabled = row.enabled, colors = SwitchColors)
+                }
+                row.value?.let {
+                    Spacer(Modifier.width(16.dp))
+                    Text(it, fontSize = 14.sp, color = TextSecondary)
                 }
             }
         }
@@ -1510,7 +1686,7 @@ private fun WallpaperTile(wallpaper: Wallpaper, selected: Boolean, modifier: Mod
                 .clip(shape)
                 .background(Color.Black)
                 .wallpaper(wallpaper, scale = 0.5f)
-                .border(if (selected) 2.dp else 1.dp, if (selected) TextPrimary else SurfaceRaised, shape)
+                .then(if (selected) Modifier.border(2.dp, TextPrimary, shape) else Modifier)
         ) {
             if (selected) {
                 Icon(
