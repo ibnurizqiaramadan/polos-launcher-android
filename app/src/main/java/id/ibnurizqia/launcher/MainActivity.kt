@@ -95,7 +95,9 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -654,9 +656,10 @@ class MainActivity : ComponentActivity() {
             device?.let {
                 if (hasToday) Spacer(Modifier.height(12.dp))
                 SubText("Device")
-                SubText(it.ram, color = TextSecondary, tabular = true)
-                it.cpu?.let { cpu -> SubText(cpu, color = TextSecondary, tabular = true) }
-                it.battery?.let { battery -> SubText(battery, color = TextSecondary, tabular = true) { showBattery = true } }
+                // on big font sizes these wrap rather than lose the temperature behind an ellipsis
+                SubText(it.ram, color = TextSecondary, tabular = true, maxLines = 2)
+                it.cpu?.let { cpu -> SubText(cpu, color = TextSecondary, tabular = true, maxLines = 2) }
+                it.battery?.let { battery -> SubText(battery, color = TextSecondary, tabular = true, maxLines = 2) { showBattery = true } }
             }
         }
     }
@@ -810,6 +813,7 @@ private fun SubText(
     modifier: Modifier = Modifier,
     color: Color = TextMuted,
     tabular: Boolean = false, // fixed-width digits for numbers that keep changing, so the line doesn't wobble
+    maxLines: Int = 1,
     onLongClick: (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) = Text(
@@ -817,7 +821,7 @@ private fun SubText(
     color = color,
     style = if (tabular) LocalTextStyle.current.copy(fontFeatureSettings = "tnum") else LocalTextStyle.current,
     fontSize = 14.sp,
-    maxLines = 1,
+    maxLines = maxLines,
     overflow = TextOverflow.Ellipsis,
     modifier = modifier
         .then(
@@ -1731,6 +1735,7 @@ private fun WallpaperTile(wallpaper: Wallpaper, selected: Boolean, modifier: Mod
         modifier
             .clip(shape)
             .selectable(selected, role = Role.RadioButton, onClick = onClick)
+            .semantics { contentDescription = wallpaper.name } // TalkBack: the name, not just "selected"
             .padding(bottom = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -1758,11 +1763,14 @@ private fun WallpaperTile(wallpaper: Wallpaper, selected: Boolean, modifier: Mod
             }
         }
         Spacer(Modifier.height(8.dp))
-        Text(
+        // shrinks a little on big font sizes rather than cutting "Diamonds" to "Diamon"
+        BasicText(
             wallpaper.name,
-            fontSize = 14.sp,
-            color = if (selected) TextPrimary else TextMuted,
-            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+            style = LocalTextStyle.current.copy(
+                color = if (selected) TextPrimary else TextMuted,
+                fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+            ),
+            autoSize = TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = 14.sp, stepSize = 1.sp),
             maxLines = 1,
         )
     }
