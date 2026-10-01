@@ -86,6 +86,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -140,8 +141,11 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.TransformOrigin
@@ -288,7 +292,7 @@ class MainActivity : ComponentActivity() {
                         Box(Modifier.fillMaxSize().pointerInput(Unit) {}) {
                             AppList(
                                 apps, hidden,
-                                recent = if (settings.recent.on) recentApps(3) else emptyList(),
+                                recent = if (settings.recent.on) recentApps(10) else emptyList(),
                                 showIndex = settings.index.on,
                                 autoKeyboard = settings.keyboard.on,
                                 onOpen = ::open,
@@ -930,12 +934,14 @@ private fun AppList(
                 )
             }
         }
-        // a few recent apps right above the search field, within thumb reach; out of the way while searching
+        // recent apps right above the search field, within thumb reach; swipe sideways for more, while
+        // "Recent:" stays put. Out of the way while searching.
         if (!searching && recent.isNotEmpty()) {
-            Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 SubText("Recent:")
-                recent.forEach { app ->
-                    SubText(app.label, Modifier.weight(1f, fill = false), color = TextSecondary) { onOpen(app) }
+                val row = rememberLazyListState()
+                LazyRow(state = row, modifier = Modifier.weight(1f).fadingEdges(row), contentPadding = PaddingValues(end = 12.dp)) {
+                    items(recent, key = { it.key }) { app -> SubText(app.label, color = TextSecondary) { onOpen(app) } }
                 }
             }
         }
@@ -1033,6 +1039,20 @@ private val WaveShift = 40.dp
  * Letters near the finger bulge left, grow and brighten on a smooth falloff; letters with no apps
  * are dimmed but still land on the next letter that has some.
  */
+// Fades a scrolling row out at whichever end has more to scroll to, so it reads as swipeable rather than cut off.
+// Offscreen so the fade masks only the row, letting whatever is behind it show through.
+private fun Modifier.fadingEdges(state: LazyListState) = graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val fade = 32.dp.toPx()
+        if (state.canScrollBackward) {
+            drawRect(Brush.horizontalGradient(listOf(Color.Transparent, Color.Black), endX = fade), blendMode = BlendMode.DstIn)
+        }
+        if (state.canScrollForward) {
+            drawRect(Brush.horizontalGradient(listOf(Color.Black, Color.Transparent), startX = size.width - fade), blendMode = BlendMode.DstIn)
+        }
+    }
+
 @Composable
 private fun AlphabetScroller(
     firstIndex: Map<Char, Int>,
@@ -1590,7 +1610,7 @@ private fun SettingsPage(
                 } else {
                     null
                 },
-                settings.recent.row("Recent apps", "Three apps above the search field"),
+                settings.recent.row("Recent apps", "Up to 10, above the search field; swipe sideways for more"),
                 settings.index.row("Alphabet index", "Letters along the right edge to jump through the list"),
                 settings.keyboard.row("Open keyboard right away", "Otherwise it waits until you tap search"),
             ).filterNotNull(),
