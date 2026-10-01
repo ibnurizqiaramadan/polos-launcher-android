@@ -2,6 +2,7 @@ package id.ibnurizqia.launcher
 
 import android.content.SharedPreferences
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.edit
@@ -39,6 +40,15 @@ class LauncherSettings(private val prefs: SharedPreferences) {
 
     // app drawer
     val blur = Option("drawer:blur", true)
+    var blurLevel by mutableIntStateOf(prefs.getInt("drawer:blur_level", 5)) // 1..10, x5dp of blur radius
+        private set
+
+    fun adjustBlur(level: Int) {
+        if (level == blurLevel) return // a slider drag reports the same step many times
+        blurLevel = level
+        prefs.edit { putInt("drawer:blur_level", level) }
+    }
+
     val recent = Option("drawer:recent", true)
     val index = Option("drawer:index", true)
     val keyboard = Option("drawer:keyboard", false)

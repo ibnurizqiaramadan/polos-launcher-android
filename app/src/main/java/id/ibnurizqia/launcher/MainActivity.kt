@@ -112,6 +112,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -157,6 +159,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
@@ -264,7 +267,7 @@ class MainActivity : ComponentActivity() {
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                val radius = drawer * 24.dp.toPx()
+                                val radius = drawer * (settings.blurLevel * 5).dp.toPx()
                                 renderEffect = if (blur && radius >= 1f) BlurEffect(radius, radius, TileMode.Decal) else null
                             }
                             .drawWithContent {
@@ -1572,10 +1575,25 @@ private fun SettingsPage(
                     if (canBlur) "Home stays softly visible; off fades it to black" else "Needs Android 12 or newer",
                     enabled = canBlur,
                 ),
+                // only while blur is on: a strength for something that's off would just be noise
+                if (canBlur && settings.blur.on) {
+                    SettingRow("Blur level", value = "${settings.blurLevel}") {
+                        Slider(
+                            value = settings.blurLevel.toFloat(),
+                            onValueChange = { settings.adjustBlur(it.roundToInt()) },
+                            valueRange = 1f..10f,
+                            steps = 8, // the 8 stops between 1 and 10
+                            colors = SliderColors,
+                            modifier = Modifier.semantics { contentDescription = "Blur level" },
+                        )
+                    }
+                } else {
+                    null
+                },
                 settings.recent.row("Recent apps", "Three apps above the search field"),
                 settings.index.row("Alphabet index", "Letters along the right edge to jump through the list"),
                 settings.keyboard.row("Open keyboard right away", "Otherwise it waits until you tap search"),
-            ),
+            ).filterNotNull(),
         )
         SettingGroup(
             "Gestures",
@@ -1596,14 +1614,18 @@ private fun SettingsPage(
     }
 }
 
-/** One settings row: a switch when [checked] is set, otherwise a link, optionally showing its current [value]. */
+/**
+ * One settings row: a switch when [checked] is set, a link when there's an [onClick], optionally showing its
+ * current [value], with [below] for a control under the title (e.g. a slider).
+ */
 private class SettingRow(
     val title: String,
     val summary: String? = null,
     val checked: Boolean? = null,
     val value: String? = null,
     val enabled: Boolean = true,
-    val onClick: () -> Unit,
+    val onClick: (() -> Unit)? = null,
+    val below: (@Composable () -> Unit)? = null,
 )
 
 private fun LauncherSettings.Option.row(title: String, summary: String? = null, enabled: Boolean = true) =
@@ -1629,18 +1651,28 @@ private val SwitchColors
         uncheckedBorderColor = TextMuted,
     )
 
+private val SliderColors
+    @Composable get() = SliderDefaults.colors(
+        thumbColor = TextPrimary,
+        activeTrackColor = TextPrimary,
+        activeTickColor = Color.Black,
+        inactiveTrackColor = Color.Black,
+        inactiveTickColor = TextMuted,
+    )
+
 // the whole row is the touch target (64dp+); the switch only shows the state, so it takes no clicks itself
 @Composable
 private fun SettingGroup(title: String, rows: List<SettingRow>) {
     SectionTitle(title)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         rows.forEachIndexed { i, row ->
-            val action = if (row.checked != null) {
-                Modifier.toggleable(row.checked, enabled = row.enabled, role = Role.Switch) { row.onClick() }
-            } else {
-                Modifier.clickable(enabled = row.enabled, onClick = row.onClick)
+            val click = row.onClick
+            val action = when {
+                click == null -> Modifier
+                row.checked != null -> Modifier.toggleable(row.checked, enabled = row.enabled, role = Role.Switch) { click() }
+                else -> Modifier.clickable(enabled = row.enabled, onClick = click)
             }
-            Row(
+            Column(
                 Modifier
                     .fillMaxWidth()
                     .clip(segmentShape(first = i == 0, last = i == rows.lastIndex))
@@ -1649,20 +1681,23 @@ private fun SettingGroup(title: String, rows: List<SettingRow>) {
                     .alpha(if (row.enabled) 1f else 0.38f)
                     .heightIn(min = 64.dp)
                     .padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalArrangement = Arrangement.Center,
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(row.title, fontSize = 16.sp)
-                    row.summary?.let { Text(it, fontSize = 14.sp, color = TextMuted) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(row.title, fontSize = 16.sp)
+                        row.summary?.let { Text(it, fontSize = 14.sp, color = TextMuted) }
+                    }
+                    row.checked?.let {
+                        Spacer(Modifier.width(16.dp))
+                        Switch(checked = it, onCheckedChange = null, enabled = row.enabled, colors = SwitchColors)
+                    }
+                    row.value?.let {
+                        Spacer(Modifier.width(16.dp))
+                        Text(it, fontSize = 14.sp, color = TextSecondary)
+                    }
                 }
-                row.checked?.let {
-                    Spacer(Modifier.width(16.dp))
-                    Switch(checked = it, onCheckedChange = null, enabled = row.enabled, colors = SwitchColors)
-                }
-                row.value?.let {
-                    Spacer(Modifier.width(16.dp))
-                    Text(it, fontSize = 14.sp, color = TextSecondary)
-                }
+                row.below?.invoke()
             }
         }
     }

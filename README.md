@@ -65,7 +65,7 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 - [x] Opsi sembunyikan aplikasi (Hide apps) & rename label app
 - [x] Wallpaper buatan launcher (Lines, Waves, Dots, Rings, Contours, Mesh, Glow), semuanya gelap biar tetap hemat AMOLED
 - [x] Halaman Settings: wallpaper, tampil/sembunyikan tiap elemen home, opsi drawer, gesture
-- [x] Blur di belakang app drawer (Android 12+; kalau dimatikan, latar drawer hitam pekat)
+- [x] Blur di belakang app drawer dengan slider level 1–10 (Android 12+; kalau dimatikan, latar drawer hitam pekat)
 
 ## Cara Pakai
 - **Swipe up** di home: buka app drawer (tap search untuk mengetik; hasil muncul dari bawah, yang paling cocok tepat di atas search; Enter = buka hasil itu)
