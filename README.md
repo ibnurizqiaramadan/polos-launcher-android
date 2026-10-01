@@ -63,6 +63,7 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 - [x] Now playing + kontrol Prev/Play-Pause/Next (butuh akses notifikasi)
 - [x] Gesture navigasi untuk HP 3 tombol (Accessibility): swipe pinggir = Back, swipe up bawah = Home, swipe up + tahan = Recents
 - [x] Opsi sembunyikan aplikasi (Hide apps) & rename label app
+- [x] Wallpaper buatan launcher (Lines, Waves, Dots, Rings, Contours, Mesh, Glow), semuanya gelap biar tetap hemat AMOLED
 
 ## Cara Pakai
 - **Swipe up** di home: buka app drawer (tap search untuk mengetik; hasil muncul dari bawah, yang paling cocok tepat di atas search; Enter = buka hasil itu)
@@ -71,6 +72,7 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 - **Show: weather / events / screen time / gestures / music** di home: aktifkan info tersebut (tiap hint hilang setelah di-tap sekali; bisa diaktifkan lagi lewat App info)
 - **Tap jam** = alarm, **tap tanggal** = kalender, **tap cuaca** = prakiraan, **tap baterai** = pemakaian baterai, **tap acara** = buka acaranya
 - **Long press** app: Add to home / Rename / Hide / App info
+- **Long press** area kosong di home (atau "Launcher settings" paling bawah drawer): Settings, pilih wallpaper (langsung kelihatan di belakang sheet)
 - **Drag huruf** di kanan drawer (# A–Z penuh setinggi list): lompat ke huruf itu; huruf redup = tidak ada app, lompat ke huruf berikutnya
 - App tersembunyi ada di "Hidden apps (n)" paling bawah drawer
 - Build & install: `./gradlew installDebug`, lalu tekan Home dan pilih "Minimalist Launcher"
