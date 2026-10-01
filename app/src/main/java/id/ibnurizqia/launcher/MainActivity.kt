@@ -491,6 +491,29 @@ class MainActivity : ComponentActivity() {
                     InfoText("${batteryLevel()}%") { showBattery = true }
                 }
                 Spacer(Modifier.height(12.dp))
+                // up here, under the weather: the header's free space absorbs it, so favorites never move
+                media.nowPlaying?.let { track ->
+                    Spacer(Modifier.height(8.dp))
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = listOf(track.title, track.artist).filter { it.isNotEmpty() }.joinToString("  ·  "),
+                            fontSize = 16.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .clickable { media.controller?.packageName?.let(packageManager::getLaunchIntentForPackage)?.let(::launch) }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                        )
+                        // play/pause is the main action: larger and brighter; IconButton gives 48dp targets + ripple
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            MediaButton(SkipPreviousIcon, "Previous", 28.dp, TextSecondary) { media.controller?.transportControls?.skipToPrevious() }
+                            MediaButton(if (track.playing) PauseIcon else Icons.Filled.PlayArrow, if (track.playing) "Pause" else "Play", 36.dp, TextPrimary) {
+                                media.controller?.transportControls?.run { if (track.playing) pause() else play() }
+                            }
+                            MediaButton(SkipNextIcon, "Next", 28.dp, TextSecondary) { media.controller?.transportControls?.skipToNext() }
+                        }
+                    }
+                }
                 // all setup hints on one line instead of a stack of "Tap to show ..." rows
                 if (hints.isNotEmpty()) {
                     FlowRow(horizontalArrangement = Arrangement.Center) {
@@ -510,28 +533,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
             Spacer(Modifier.height(24.dp))
-            media.nowPlaying?.let { track ->
-                Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = listOf(track.title, track.artist).filter { it.isNotEmpty() }.joinToString("  ·  "),
-                        fontSize = 16.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .clickable { media.controller?.packageName?.let(packageManager::getLaunchIntentForPackage)?.let(::launch) }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                    )
-                    // play/pause is the main action: larger and brighter; IconButton gives 48dp targets + ripple
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        MediaButton(SkipPreviousIcon, "Previous", 28.dp, TextSecondary) { media.controller?.transportControls?.skipToPrevious() }
-                        MediaButton(if (track.playing) PauseIcon else Icons.Filled.PlayArrow, if (track.playing) "Pause" else "Play", 36.dp, TextPrimary) {
-                            media.controller?.transportControls?.run { if (track.playing) pause() else play() }
-                        }
-                        MediaButton(SkipNextIcon, "Next", 28.dp, TextSecondary) { media.controller?.transportControls?.skipToNext() }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-            }
             Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
                 SubText("Phone", Modifier.align(Alignment.CenterStart)) { launch(Intent(Intent.ACTION_DIAL)) }
                 screenTime?.let { SubText("Screen time ${formatDuration(it)}", Modifier.align(Alignment.Center)) }
