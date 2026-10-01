@@ -63,7 +63,7 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 - [x] Now playing + kontrol Prev/Play-Pause/Next (butuh akses notifikasi)
 - [x] Gesture navigasi untuk HP 3 tombol (Accessibility): swipe pinggir = Back, swipe up bawah = Home, swipe up + tahan = Recents
 - [x] Opsi sembunyikan aplikasi (Hide apps) & rename label app
-- [x] Wallpaper buatan launcher (Lines, Waves, Dots, Rings, Contours, Mesh, Glow), semuanya gelap biar tetap hemat AMOLED
+- [x] 20 wallpaper buatan launcher (garis: Lines, Diamonds, Grid, Chevron, Hexagons, Spiral, Rays...; abstrak: Contours, Ridges, Flow, Arcs, Mesh, Stars; glow: Glow, Ember, Aurora), semuanya gelap biar tetap hemat AMOLED
 - [x] Halaman Settings: wallpaper, tampil/sembunyikan tiap elemen home, opsi drawer, gesture
 - [x] Blur di belakang app drawer dengan slider level 1–10 (Android 12+; kalau dimatikan, latar drawer hitam pekat)
 
