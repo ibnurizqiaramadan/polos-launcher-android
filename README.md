@@ -53,7 +53,7 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 - [x] Alphabet fast scroller (wave) di app drawer
 - [x] Tema pitch black (#000) untuk hemat baterai AMOLED
 - [x] Search bar di bawah drawer (keyboard muncul saat di-tap)
-- [x] Pin favorit di home screen (maksimal 6 app esensial)
+- [x] Pin favorit di home screen (maksimal 6 app esensial), urutan bisa diatur dengan tahan lalu geser
 - [x] Gesture swipe up (app drawer) & swipe down (notifikasi sistem)
 - [x] Indikator jam (24 jam, center), tanggal, dan battery percentage minimalis
 - [x] Info cuaca (Open-Meteo, lokasi perkiraan)
@@ -72,6 +72,7 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 - **Show: weather / events / screen time / gestures / music** di home: aktifkan info tersebut (tiap hint hilang setelah di-tap sekali; bisa diaktifkan lagi lewat App info)
 - **Tap jam** = alarm, **tap tanggal** = kalender, **tap cuaca** = prakiraan, **tap baterai** = pemakaian baterai, **tap acara** = buka acaranya
 - **Long press** app: Add to home / Rename / Hide / App info
+- **Tahan favorit lalu geser** ke atas/bawah: ubah urutan favorit di home (tahan tanpa geser tetap buka menu)
 - **Long press** area kosong di home (atau "Launcher settings" paling bawah drawer): Settings, pilih wallpaper (langsung kelihatan di belakang sheet)
 - **Drag huruf** di kanan drawer (# A–Z penuh setinggi list): lompat ke huruf itu; huruf redup = tidak ada app, lompat ke huruf berikutnya
 - App tersembunyi ada di "Hidden apps (n)" paling bawah drawer

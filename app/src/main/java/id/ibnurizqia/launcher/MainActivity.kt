@@ -123,6 +123,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -167,6 +168,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.view.WindowCompat
@@ -178,8 +180,10 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import java.time.LocalDate
 import kotlin.math.exp
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -566,10 +570,7 @@ class MainActivity : ComponentActivity() {
             // bottom-aligned: however tall the left column gets, favorites stay exactly where they are
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                 Column(Modifier.weight(1f)) { TodayColumn() }
-                Column(horizontalAlignment = Alignment.End) {
-                    favorites.mapNotNull { key -> apps.find { it.key == key } }
-                        .forEach { AppItem(it, 28.sp, ::open, menu, fontWeight = FontWeight.Light, align = Alignment.End) }
-                }
+                Favorites(favorites.mapNotNull { key -> apps.find { it.key == key } }, ::open, ::swapFavorites, menu)
             }
             Spacer(Modifier.height(24.dp))
             Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
@@ -685,6 +686,11 @@ class MainActivity : ComponentActivity() {
 
     private fun toggleFavorite(app: App) {
         favorites = if (app.key in favorites) favorites - app.key else favorites + app.key
+        prefs.edit { putString("favorites", favorites.joinToString("\n")) }
+    }
+
+    private fun swapFavorites(a: String, b: String) {
+        favorites = favorites.map { when (it) { a -> b; b -> a; else -> it } }
         prefs.edit { putString("favorites", favorites.joinToString("\n")) }
     }
 
@@ -1082,6 +1088,109 @@ private fun AlphabetScroller(
     }
 }
 
+/**
+ * Home favorites. Hold one and drag it up or down to reorder; the others slide out of its way. A hold
+ * without moving still opens the app's menu, which closes once the drag starts.
+ */
+@Composable
+private fun Favorites(apps: List<App>, onOpen: (App) -> Unit, onSwap: (String, String) -> Unit, menu: AppMenu) {
+    val state = rememberLazyListState()
+    val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    var dragged by remember { mutableStateOf<String?>(null) }
+    var startTop by remember { mutableIntStateOf(0) } // the dragged row's offset when the drag began
+    var travel by remember { mutableFloatStateOf(0f) } // finger movement since then
+    var settling by remember { mutableStateOf<Job?>(null) }
+    var held by remember { mutableStateOf(false) } // finger still down on the dragged row
+    val lift by animateFloatAsState(if (held) 1.05f else 1f, label = "lift") // settles back while it glides in
+    // where the dragged row is drawn: under the finger, but kept inside the list, which clips anything outside it
+    fun shownTop(size: Int) = (startTop + travel).coerceIn(0f, (state.layoutInfo.viewportSize.height - size).coerceAtLeast(0).toFloat())
+    LazyColumn(
+        state = state,
+        userScrollEnabled = false,
+        horizontalAlignment = Alignment.End,
+        modifier = Modifier.pointerInput(Unit) {
+            val dragSlop = viewConfiguration.touchSlop * 2 // a finger drifting while lifting off the menu isn't a drag
+            awaitEachGesture {
+                // Initial pass, nothing consumed until a drag starts: taps and holds stay the row's own
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                val row = state.layoutInfo.visibleItemsInfo
+                    .find { down.position.y.toInt() in it.offset until it.offset + it.size } ?: return@awaitEachGesture
+                val released = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                    while (true) {
+                        val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id }
+                        if (change == null || !change.pressed || (change.position - down.position).getDistance() > viewConfiguration.touchSlop) break
+                    }
+                }
+                if (released != null) return@awaitEachGesture // a tap or a scroll, not a hold
+                var expected = -1 // row index the last swap should land on, so a stale layout can't swap it back
+                while (true) {
+                    val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
+                    if (!change.pressed) break
+                    val dy = change.position.y - down.position.y
+                    if (dragged == null && abs(dy) > dragSlop) {
+                        settling?.cancel()
+                        dragged = row.key as String
+                        startTop = row.offset
+                        held = true
+                    }
+                    if (dragged == null) continue
+                    change.consume() // keeps home's own swipe (drawer / notifications) out of it
+                    travel = dy // unclamped here, so pulling past either end still reaches the first and last slot
+                    val rows = state.layoutInfo.visibleItemsInfo
+                    val current = rows.find { it.key == dragged } ?: continue
+                    if (expected != -1 && current.index != expected) continue
+                    // swap once the dragged row's middle passes a neighbour's middle
+                    val middle = startTop + travel + current.size / 2
+                    val next = rows.find { it.index == current.index + 1 }
+                    val prev = rows.find { it.index == current.index - 1 }
+                    val target = when {
+                        next != null && middle > next.offset + next.size / 2 -> next
+                        prev != null && middle < prev.offset + prev.size / 2 -> prev
+                        else -> null
+                    } ?: continue
+                    expected = target.index
+                    onSwap(dragged!!, target.key as String)
+                    haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                }
+                val key = dragged ?: return@awaitEachGesture
+                held = false
+                // glide into the slot it was dropped on, then hand it back to the list
+                val dropped = state.layoutInfo.visibleItemsInfo.find { it.key == key }
+                val slot = dropped?.offset ?: startTop
+                dropped?.let { travel = shownTop(it.size) - startTop } // start from where it's drawn, not the finger
+                settling = scope.launch {
+                    animate(travel, (slot - startTop).toFloat(), animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) { v, _ -> travel = v }
+                    dragged = null
+                    travel = 0f
+                }
+            }
+        },
+    ) {
+        items(apps, key = { it.key }) { app ->
+            val isDragged = app.key == dragged
+            AppItem(
+                app, 28.sp, onOpen, menu,
+                fontWeight = FontWeight.Light,
+                align = Alignment.End,
+                dragging = isDragged,
+                modifier = if (isDragged) {
+                    Modifier.zIndex(1f).graphicsLayer {
+                        // follows the finger wherever the list has put its slot by now
+                        val info = state.layoutInfo.visibleItemsInfo.find { it.key == app.key }
+                        translationY = if (info != null) shownTop(info.size) - info.offset else 0f
+                        scaleX = lift
+                        scaleY = lift
+                        transformOrigin = TransformOrigin(1f, 0.5f) // grows from the right edge it's aligned to
+                    }
+                } else {
+                    Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)
+                },
+            )
+        }
+    }
+}
+
 @Composable
 private fun AppItem(
     app: App,
@@ -1091,8 +1200,10 @@ private fun AppItem(
     modifier: Modifier = Modifier,
     fontWeight: FontWeight? = null,
     align: Alignment.Horizontal = Alignment.Start,
+    dragging: Boolean = false,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(dragging) { if (dragging) menuOpen = false } // the hold became a drag: the menu isn't wanted
     var press by remember { mutableStateOf(Offset.Zero) } // where the finger went down, within the item
     // propagateMinConstraints: a full-width row makes the whole row tappable
     Box(modifier, propagateMinConstraints = true) {
