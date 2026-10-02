@@ -17,6 +17,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.coroutines.resume
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -70,8 +71,10 @@ private suspend fun Context.freshLocation(): Location? = suspendCancellableCorou
 
 // Open-Meteo: free, no API key; one request for now and today (local timezone decides where "today" ends)
 private suspend fun fetchWeather(lat: Double, lon: Double, place: String?): Weather = withContext(Dispatchers.IO) {
+    // two decimals (~1 km) is plenty for a forecast, and sends less than Android's coarse fix already is
+    fun coarse(v: Double) = String.format(Locale.US, "%.2f", v)
     val url = URL(
-        "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code" +
+        "https://api.open-meteo.com/v1/forecast?latitude=${coarse(lat)}&longitude=${coarse(lon)}&current=temperature_2m,weather_code" +
             "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=1"
     )
     val conn = (url.openConnection() as HttpURLConnection).apply {

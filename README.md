@@ -126,6 +126,10 @@ Tanpa file itu, `assembleRelease` tetap jalan tapi menghasilkan APK tanpa tanda 
 - Sebelum mengaktifkan layanan Accessibility atau akses notifikasi untuk APK sideload: App info → ⋮ → *Allow restricted settings*
 - HyperOS memaksa navigasi 3 tombol untuk launcher pihak ketiga. Gesture navigasi Polos dibuat untuk itu. Kalau mau menyembunyikan tombolnya: `adb shell settings put global force_fsg_nav_bar 1` (kembalikan dengan `0`)
 
+## Privasi
+
+Tidak ada data yang dikumpulkan. Satu-satunya permintaan jaringan adalah ke Open-Meteo untuk cuaca, dan hanya kalau diaktifkan. Selengkapnya di [PRIVACY.md](PRIVACY.md).
+
 ## Lisensi
 
 Polos dirilis di bawah [GNU GPLv3](LICENSE). Bebas dipakai dan diubah; versi turunannya wajib tetap open source dengan lisensi yang sama.
