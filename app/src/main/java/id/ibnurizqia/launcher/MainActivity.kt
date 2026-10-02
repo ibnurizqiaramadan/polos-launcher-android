@@ -319,6 +319,7 @@ class MainActivity : ComponentActivity() {
                             onGestures = { explainGestures = true },
                             onDefaultHome = { launch(Intent(Settings.ACTION_HOME_SETTINGS)) },
                             onPermissions = { launch(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))) },
+                            onSource = { launch(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/ibnurizqiaramadan/polos-launcher-android"))) },
                             onBack = ::closeSettings,
                         )
                     }
@@ -1570,6 +1571,7 @@ private fun SettingsPage(
     onGestures: () -> Unit,
     onDefaultHome: () -> Unit,
     onPermissions: () -> Unit,
+    onSource: () -> Unit,
     onBack: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
@@ -1663,7 +1665,17 @@ private fun SettingsPage(
                 SettingRow("Permissions", "Location, calendar and other access", onClick = onPermissions),
             ),
         )
-        version?.let { Text("Polos $it", fontSize = 14.sp, color = TextMuted, modifier = Modifier.padding(start = 16.dp, top = 24.dp)) }
+        // tap opens the source: the launcher asks for Accessibility and notification access, so it should be checkable
+        Text(
+            "Polos ${version ?: ""}  ·  by xyrus10",
+            fontSize = 14.sp,
+            color = TextMuted,
+            modifier = Modifier
+                .padding(top = 16.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onSource)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        )
     }
 }
 
