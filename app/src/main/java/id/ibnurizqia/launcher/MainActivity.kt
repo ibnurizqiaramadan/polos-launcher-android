@@ -284,8 +284,13 @@ class MainActivity : ComponentActivity() {
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                val radius = drawer * (settings.blurLevel * 5).dp.toPx()
-                                renderEffect = if (behind == DrawerBackground.Home && radius >= 1f) BlurEffect(radius, radius, TileMode.Decal) else null
+                                val level = when (behind) {
+                                    DrawerBackground.Home -> settings.homeBlur.value
+                                    DrawerBackground.Wallpaper -> settings.wallpaperBlur.value
+                                    DrawerBackground.Black -> 0
+                                }
+                                val radius = drawer * (level * 5).dp.toPx()
+                                renderEffect = if (radius >= 1f) BlurEffect(radius, radius, TileMode.Decal) else null
                             }
                             .drawWithContent {
                                 drawContent()
@@ -1653,14 +1658,17 @@ private fun SettingsPage(
                         }
                     }
                 },
-                // only while the home screen is behind the drawer: a strength for anything else would just be noise
-                if (canBlur && settings.drawerBackground == DrawerBackground.Home) {
-                    SettingRow("Blur level", value = "${settings.blurLevel}") {
+                // not for Black: a strength for nothing would just be noise. Wallpaper can go down to off (crisp).
+                if (canBlur && settings.drawerBackground != DrawerBackground.Black) {
+                    val home = settings.drawerBackground == DrawerBackground.Home
+                    val level = if (home) settings.homeBlur else settings.wallpaperBlur
+                    val min = if (home) 1 else 0
+                    SettingRow("Blur level", value = if (level.value == 0) "Off" else "${level.value}") {
                         Slider(
-                            value = settings.blurLevel.toFloat(),
-                            onValueChange = { settings.adjustBlur(it.roundToInt()) },
-                            valueRange = 1f..10f,
-                            steps = 8, // the 8 stops between 1 and 10
+                            value = level.value.toFloat(),
+                            onValueChange = { level.set(it.roundToInt()) },
+                            valueRange = min.toFloat()..10f,
+                            steps = 10 - min - 1, // the stops strictly between the ends
                             colors = SliderColors,
                             modifier = Modifier.semantics { contentDescription = "Blur level" },
                         )

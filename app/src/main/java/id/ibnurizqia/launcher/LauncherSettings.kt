@@ -54,14 +54,20 @@ class LauncherSettings(private val prefs: SharedPreferences) {
         prefs.edit { putString("drawer:background", background.name) }
     }
 
-    var blurLevel by mutableIntStateOf(prefs.getInt("drawer:blur_level", 5)) // 1..10, x5dp of blur radius
-        private set
+    inner class Level(private val key: String, default: Int) {
+        var value by mutableIntStateOf(prefs.getInt(key, default))
+            private set
 
-    fun adjustBlur(level: Int) {
-        if (level == blurLevel) return // a slider drag reports the same step many times
-        blurLevel = level
-        prefs.edit { putInt("drawer:blur_level", level) }
+        fun set(level: Int) {
+            if (level == value) return // a slider drag reports the same step many times
+            value = level
+            prefs.edit { putInt(key, level) }
+        }
     }
+
+    // blur radius in 5dp steps, one per background so switching doesn't carry a value that suits the other
+    val homeBlur = Level("drawer:blur_level", 5) // 1..10: home without blur would be text over text
+    val wallpaperBlur = Level("drawer:wallpaper_blur", 0) // 0..10, 0 keeps the pattern crisp
 
     val recent = Option("drawer:recent", true)
     val index = Option("drawer:index", true)

@@ -23,7 +23,7 @@ Package: `id.ibnurizqia.launcher`. Android 8.0 (API 26) ke atas.
 - Pencarian di bawah, dekat jempol; hasil tersusun dari bawah dengan yang paling cocok tepat di atas kolom pencarian, Enter untuk membuka
 - Baris **Recent** sampai 10 app, bisa digeser ke samping
 - Sembunyikan app dan ganti nama label; app kembar (nama sama) diberi subtitle package
-- Latar drawer bisa dipilih: home yang diblur (level 1–10, Android 12+), wallpaper saja, atau hitam pekat
+- Latar drawer bisa dipilih: home yang diblur, wallpaper saja (tajam atau diblur), atau hitam pekat; level blur 0–10 (Android 12+)
 - Tarik ke bawah saat list di posisi teratas untuk menutup drawer
 
 ### Gesture
