@@ -133,6 +133,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -146,6 +147,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Brush
@@ -217,11 +219,11 @@ import kotlinx.coroutines.withContext
 private const val MAX_FAVORITES = 6
 
 // OLED palette: true black, three text emphasis levels (all pass WCAG AA on black)
-private val TextPrimary = Color.White
-private val TextSecondary = Color(0xFFBDBDBD) // 11:1
-private val TextMuted = Color(0xFF8C8C8C) // 6.2:1
-private val SurfaceDim = Color(0xFF121212) // barely-lit fill for the search field
-private val SurfaceRaised = Color(0xFF1F1F1F) // menu segments: lifted just enough off pure black
+internal val TextPrimary = Color.White
+internal val TextSecondary = Color(0xFFBDBDBD) // 11:1
+internal val TextMuted = Color(0xFF8C8C8C) // 6.2:1
+internal val SurfaceDim = Color(0xFF121212) // barely-lit fill for the search field
+internal val SurfaceRaised = Color(0xFF1F1F1F) // menu segments: lifted just enough off pure black
 
 /** Long-press menu content for one app; call `close` to dismiss it. */
 private typealias AppMenu = @Composable (app: App, close: () -> Unit) -> Unit
@@ -248,6 +250,9 @@ class MainActivity : ComponentActivity() {
     private var showBattery by mutableStateOf(false)
     private var drawerOpen by mutableStateOf(false)
     private var settingsOpen by mutableStateOf(false)
+    private var guideOpen by mutableStateOf(false)
+    private var tour by mutableStateOf(false) // the first-run highlights
+    private val spots = mutableStateMapOf<String, Rect>() // where home's parts are, for the highlights
     private val settings by lazy { LauncherSettings(prefs) }
     private var navGestures by mutableStateOf(false) // our accessibility service is on
     private var weather by mutableStateOf<Weather?>(null)
@@ -267,6 +272,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(SystemBarStyle.dark(TRANSPARENT), SystemBarStyle.dark(TRANSPARENT))
         favorites = prefs.getString("favorites", "")!!.lines().filter { it.isNotEmpty() }
         hidden = prefs.getStringSet("hidden", emptySet())!!.toSet()
+        tour = !prefs.getBoolean("tour:done", false)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(Modifier.fillMaxSize(), color = Color.Black, contentColor = TextPrimary) {
@@ -334,9 +340,22 @@ class MainActivity : ComponentActivity() {
                             onDefaultHome = { launch(Intent(Settings.ACTION_HOME_SETTINGS)) },
                             onPermissions = { launch(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))) },
                             onSource = { launch(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/ibnurizqiaramadan/polos-launcher-android"))) },
+                            onGuide = { guideOpen = true },
                             onBack = ::closeSettings,
                         )
                     }
+                    AnimatedVisibility(
+                        visible = guideOpen,
+                        enter = slideInHorizontally(tween(250, easing = EaseOutCubic)) { it / 10 } + fadeIn(tween(250)),
+                        exit = slideOutHorizontally(tween(180, easing = EaseInCubic)) { it / 10 } + fadeOut(tween(180)),
+                    ) {
+                        GuidePage(
+                            navGestures = navGestures,
+                            onReplay = { guideOpen = false; closeSettings(); tour = true },
+                            onBack = { guideOpen = false },
+                        )
+                    }
+                    if (tour) TourOverlay(spots, onDone = ::endTour)
                     renaming?.let { app ->
                         RenameDialog(app, onRename = { rename(app, it); renaming = null }, onDismiss = { renaming = null })
                     }
@@ -560,11 +579,17 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         drawerOpen = false
-        closeSettings()
+        closeSettings() // closes the guide too
     }
 
     // hints and weather depend on what's switched on, so catch up with any change made in settings
+    private fun endTour() {
+        tour = false
+        prefs.edit { putBoolean("tour:done", true) }
+    }
+
     private fun closeSettings() {
+        guideOpen = false
         if (!settingsOpen) return
         settingsOpen = false
         refreshHints()
@@ -606,7 +631,7 @@ class MainActivity : ComponentActivity() {
                 .padding(top = 40.dp, bottom = 16.dp)
         ) {
             // header steps down: time > date > conditions > agenda, each smaller and dimmer
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(Modifier.fillMaxWidth().spot("header", spots), horizontalAlignment = Alignment.CenterHorizontally) {
                 // Platform TextClock handles minute ticks, time zone changes and wake-from-sleep on its own
                 TextClock("HH:mm", 72f, light = true, modifier = Modifier.clickable { launch(Intent(AlarmClock.ACTION_SHOW_ALARMS)) })
                 TextClock("EEEE, d MMMM", 18f, modifier = Modifier.clickable { launch(calendarAt(System.currentTimeMillis())) })
@@ -657,11 +682,13 @@ class MainActivity : ComponentActivity() {
             // left: things to read (today) in quiet grey; right: favorites to tap, within thumb reach
             // bottom-aligned: however tall the left column gets, favorites stay exactly where they are
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-                Column(Modifier.weight(1f)) { TodayColumn() }
-                Favorites(favorites.mapNotNull { key -> apps.find { it.key == key } }, ::open, ::swapFavorites, menu)
+                Column(Modifier.weight(1f).spot("today", spots)) { TodayColumn() }
+                Box(Modifier.spot("favorites", spots)) {
+                    Favorites(favorites.mapNotNull { key -> apps.find { it.key == key } }, ::open, ::swapFavorites, menu)
+                }
             }
             Spacer(Modifier.height(24.dp))
-            Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+            Box(Modifier.fillMaxWidth().spot("bottom", spots).padding(horizontal = 12.dp)) {
                 if (settings.shortcuts.on) SubText("Phone", Modifier.align(Alignment.CenterStart)) { launch(Intent(Intent.ACTION_DIAL)) }
                 screenTime?.takeIf { settings.screenTime.on }?.let { SubText("Screen time ${formatDuration(it)}", Modifier.align(Alignment.Center)) }
                 if (settings.shortcuts.on) {
@@ -1419,10 +1446,10 @@ private fun MenuGroup(close: () -> Unit, actions: List<MenuAction>) = Column(ver
     }
 }
 
-private val SegmentOuter = 20.dp
-private val SegmentInner = 4.dp
+internal val SegmentOuter = 20.dp
+internal val SegmentInner = 4.dp
 
-private fun segmentShape(first: Boolean, last: Boolean) = RoundedCornerShape(
+internal fun segmentShape(first: Boolean, last: Boolean) = RoundedCornerShape(
     topStart = if (first) SegmentOuter else SegmentInner,
     topEnd = if (first) SegmentOuter else SegmentInner,
     bottomStart = if (last) SegmentOuter else SegmentInner,
@@ -1586,6 +1613,7 @@ private fun SettingsPage(
     onDefaultHome: () -> Unit,
     onPermissions: () -> Unit,
     onSource: () -> Unit,
+    onGuide: () -> Unit,
     onBack: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
@@ -1694,6 +1722,7 @@ private fun SettingsPage(
             listOf(
                 SettingRow("Default home app", "Choose which launcher the Home button opens", onClick = onDefaultHome),
                 SettingRow("Permissions", "Location, calendar and other access", onClick = onPermissions),
+                SettingRow("How to use", "Every gesture and tap, and the first-start highlights again", onClick = onGuide),
             ),
         )
         // tap opens the source: the launcher asks for Accessibility and notification access, so it should be checkable
@@ -1714,7 +1743,7 @@ private fun SettingsPage(
  * One settings row: a switch when [checked] is set, a link when there's an [onClick], optionally showing its
  * current [value], with [below] for a control under the title (e.g. a slider).
  */
-private class SettingRow(
+internal class SettingRow(
     val title: String,
     val summary: String? = null,
     val checked: Boolean? = null,
@@ -1728,7 +1757,7 @@ private fun LauncherSettings.Option.row(title: String, summary: String? = null, 
     SettingRow(title, summary, checked = on, enabled = enabled, onClick = ::toggle)
 
 @Composable
-private fun SectionTitle(text: String) = Text(
+internal fun SectionTitle(text: String) = Text(
     text,
     fontSize = 14.sp,
     fontWeight = FontWeight.Medium,
@@ -1768,7 +1797,7 @@ private val SliderColors
 
 // the whole row is the touch target (64dp+); the switch only shows the state, so it takes no clicks itself
 @Composable
-private fun SettingGroup(title: String, rows: List<SettingRow>) {
+internal fun SettingGroup(title: String, rows: List<SettingRow>) {
     SectionTitle(title)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         rows.forEachIndexed { i, row ->

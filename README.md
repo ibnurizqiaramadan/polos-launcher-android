@@ -37,6 +37,10 @@ Package: `id.ibnurizqia.launcher`. Android 8.0 (API 26) ke atas.
 - Glow: Glow, Ember, Aurora, pendar warna gelap tanpa garis
 - Black: hitam polos
 
+### Panduan
+- Saat pertama kali dibuka, tur singkat menyorot bagian-bagian home (jam, favorit, Today, pintasan, gesture); bisa dilewati kapan saja
+- Halaman **How to use** di Settings merangkum semua gesture dan tap, dan bisa memutar ulang tur-nya
+
 ### Settings
 Tahan area kosong di home, atau "Launcher settings" di paling bawah drawer. Semua perubahan langsung berlaku:
 - Wallpaper
@@ -88,6 +92,7 @@ app/src/main/
 ├── AndroidManifest.xml          intent-filter HOME, izin, dua service (gesture, media)
 ├── java/id/ibnurizqia/launcher/
 │   ├── MainActivity.kt          Activity, state, home screen, app drawer, menu, dialog, halaman Settings
+│   ├── Tour.kt                  tur sorotan saat pertama kali dibuka dan halaman How to use
 │   ├── LauncherSettings.kt      semua pengaturan: pilihan wallpaper dan toggle, tersimpan ke SharedPreferences
 │   ├── Wallpaper.kt             20 wallpaper yang digambar dengan Canvas (path, titik, gradien)
 │   ├── Gestures.kt              GestureService (Accessibility): strip tepi untuk Back/Home/Recents, kunci layar
