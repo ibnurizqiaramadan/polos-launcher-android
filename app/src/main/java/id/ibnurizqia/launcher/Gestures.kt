@@ -1,12 +1,15 @@
 package id.ibnurizqia.launcher
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
@@ -14,6 +17,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.roundToInt
@@ -100,6 +104,27 @@ fun Context.gesturesEnabled(): Boolean {
     return Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
         ?.split(':')
         ?.any { ComponentName.unflattenFromString(it) == ours } == true
+}
+
+/** [Broken]: switched on, but Android stopped it (its process died, e.g. after an update) and won't restart it until it's toggled. */
+enum class GestureState { Off, On, Broken }
+
+// the enabled-services list only holds services that are actually bound, so a crashed one is missing from it
+fun Context.gestureState(): GestureState {
+    if (!gesturesEnabled()) return GestureState.Off
+    val ours = ComponentName(this, GestureService::class.java)
+    val bound = getSystemService(AccessibilityManager::class.java)
+        .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+        .any { ComponentName.unflattenFromString(it.id) == ours }
+    return if (bound) GestureState.On else GestureState.Broken
+}
+
+/** Accessibility settings, with the hint stock Android uses to scroll to and highlight our service; harmless elsewhere. */
+fun Context.accessibilitySettingsIntent(): Intent {
+    val ours = ComponentName(this, GestureService::class.java).flattenToString()
+    return Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+        .putExtra(":settings:fragment_args_key", ours)
+        .putExtra(":settings:show_fragment_args", Bundle().apply { putString(":settings:fragment_args_key", ours) })
 }
 
 /**

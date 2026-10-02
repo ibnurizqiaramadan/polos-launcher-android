@@ -260,7 +260,7 @@ class MainActivity : ComponentActivity() {
     private var tour by mutableStateOf(false) // the first-run highlights
     private val spots = mutableStateMapOf<String, Rect>() // where home's parts are, for the highlights
     private val settings by lazy { LauncherSettings(prefs) }
-    private var navGestures by mutableStateOf(false) // our accessibility service is on
+    private var gestures by mutableStateOf(GestureState.Off) // our accessibility service: off, on, or stopped by Android
     private var weather by mutableStateOf<Weather?>(null)
     private var weatherFetchedAt = 0L
     private var nextAlarm by mutableStateOf<Long?>(null)
@@ -341,8 +341,14 @@ class MainActivity : ComponentActivity() {
                     ) {
                         SettingsPage(
                             settings,
-                            navGestures = navGestures,
-                            onGestures = { if (navGestures) confirmGesturesOff = true else explainGestures = true },
+                            gestures = gestures,
+                            onGestures = {
+                                when (gestures) {
+                                    GestureState.On -> confirmGesturesOff = true
+                                    GestureState.Off -> explainGestures = true
+                                    GestureState.Broken -> launch(accessibilitySettingsIntent()) // off and on again is the only fix
+                                }
+                            },
                             onDefaultHome = { launch(Intent(Settings.ACTION_HOME_SETTINGS)) },
                             access = access,
                             onPermissions = { accessOpen = true },
@@ -357,7 +363,7 @@ class MainActivity : ComponentActivity() {
                         exit = slideOutHorizontally(tween(180, easing = EaseInCubic)) { it / 10 } + fadeOut(tween(180)),
                     ) {
                         GuidePage(
-                            navGestures = navGestures,
+                            navGestures = gestures == GestureState.On,
                             onReplay = { guideOpen = false; closeSettings(); tour = true },
                             onBack = { guideOpen = false },
                         )
@@ -389,7 +395,7 @@ class MainActivity : ComponentActivity() {
                         GesturesDialog(
                             onContinue = {
                                 explainGestures = false
-                                launch(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                                launch(accessibilitySettingsIntent())
                             },
                             onDismiss = { explainGestures = false },
                         )
@@ -415,7 +421,7 @@ class MainActivity : ComponentActivity() {
         loadApps()
         refreshHints()
         refreshWeather()
-        navGestures = gesturesEnabled()
+        gestures = gestureState()
         refreshAccess()
         nextAlarm = nextClockAlarm()
         if (granted(CALENDAR)) {
@@ -495,7 +501,11 @@ class MainActivity : ComponentActivity() {
             if (settings.events.on) hint("events", CALENDAR, granted(CALENDAR)) { askPermission(CALENDAR) }
             if (settings.screenTime.on) hint("screen time", "usage", hasUsageAccess(), ::openUsageAccess)
             // only offered on 3-button phones; with system gestures it would just double up
-            if (usesButtonNavigation()) hint("gestures", "gestures", gesturesEnabled()) { explainGestures = true }
+            if (usesButtonNavigation()) when (gestures) {
+                GestureState.Off -> hint("gestures", "gestures", false) { explainGestures = true }
+                GestureState.Broken -> hint("fix gestures", "gestures-fix", false) { launch(accessibilitySettingsIntent()) }
+                GestureState.On -> {}
+            }
             if (settings.music.on) hint("music", "media", hasNotificationAccess(), ::openNotificationAccess)
         }
     }
@@ -527,8 +537,12 @@ class MainActivity : ComponentActivity() {
             Access("Usage access", "Screen time and recent apps", hasUsageAccess(), ::openUsageAccess),
             Access("Notification access", "Now playing and its controls", hasNotificationAccess(), ::openNotificationAccess),
             Access(
-                "Accessibility", "Navigation gestures and double-tap to lock. Optional; some banking apps refuse to run while it's on",
-                gesturesEnabled(), grant = { explainGestures = true }, revoke = { confirmGesturesOff = true },
+                "Accessibility",
+                if (gestures == GestureState.Broken) "Not working: Android stopped it. Tap to turn it off and on again"
+                else "Navigation gestures and double-tap to lock. Optional; some banking apps refuse to run while it's on",
+                gestures == GestureState.On,
+                grant = { if (gestures == GestureState.Broken) launch(accessibilitySettingsIntent()) else explainGestures = true },
+                revoke = { confirmGesturesOff = true },
             ),
         )
     }
@@ -624,7 +638,7 @@ class MainActivity : ComponentActivity() {
         GestureService.stop()
         lifecycleScope.launch {
             delay(400)
-            navGestures = gesturesEnabled()
+            gestures = gestureState()
             refreshAccess()
         }
     }
@@ -1658,6 +1672,8 @@ private fun GesturesDialog(onContinue: () -> Unit, onDismiss: () -> Unit) = Aler
                 "It doesn't read or collect anything on your screen.\n\n" +
                 "It's optional, meant for phones that force 3-button navigation. Some banking apps (e.g. BCA) refuse to run " +
                 "while any accessibility service is on; you can turn it off again from Polos' settings in one tap.\n\n" +
+                "If Android ever shows it as \"Not working\" (after an update, or when HyperOS kills the app), turn it off and on " +
+                "again there. On HyperOS, setting Polos' Battery saver to No restrictions makes that rarer.\n\n" +
                 "Next, turn on \"Polos gestures\" in Accessibility settings. If Android says it's a " +
                 "restricted setting, first open App info > \u22ee > Allow restricted settings."
         )
@@ -1673,7 +1689,7 @@ private fun GesturesDialog(onContinue: () -> Unit, onDismiss: () -> Unit) = Aler
 @Composable
 private fun SettingsPage(
     settings: LauncherSettings,
-    navGestures: Boolean,
+    gestures: GestureState,
     onGestures: () -> Unit,
     onDefaultHome: () -> Unit,
     access: List<Access>,
@@ -1780,12 +1796,16 @@ private fun SettingsPage(
             listOf(
                 SettingRow(
                     "Navigation gestures",
-                    if (navGestures) "Tap to turn off, e.g. before a banking app that refuses to run while an accessibility service is on"
-                    else "Optional, for phones that force 3-button navigation (HyperOS): swipe in from the edges for Back, Home and Recents",
-                    value = if (navGestures) "On" else "Off",
+                    when (gestures) {
+                        GestureState.On -> "Tap to turn off, e.g. before a banking app that refuses to run while an accessibility service is on"
+                        GestureState.Off -> "Optional, for phones that force 3-button navigation (HyperOS): swipe in from the edges for Back, Home and Recents"
+                        GestureState.Broken -> "Android stopped it, as happens after an update or when the system kills the app. Tap to turn it off and on again"
+                    },
+                    value = when (gestures) { GestureState.On -> "On"; GestureState.Off -> "Off"; GestureState.Broken -> "Not working" },
+                    emphasised = gestures == GestureState.Broken,
                     onClick = onGestures,
                 ),
-                settings.doubleTapLock.row("Double-tap to lock", if (navGestures) "Double-tap an empty spot on home" else "Needs navigation gestures on"),
+                settings.doubleTapLock.row("Double-tap to lock", if (gestures == GestureState.On) "Double-tap an empty spot on home" else "Needs navigation gestures on"),
                 settings.swipeDown.row("Swipe down for notifications"),
             ),
         )

@@ -28,7 +28,7 @@ Package: `id.ibnurizqia.launcher`. Android 8.0 (API 26) ke atas.
 
 ### Gesture
 - Swipe up: drawer. Swipe down: panel notifikasi. Double-tap area kosong: kunci layar
-- Gesture navigasi untuk HP yang memaksa 3 tombol (misalnya HyperOS dengan launcher pihak ketiga): swipe dari tepi kiri/kanan = Back, swipe up dari bawah tengah = Home, swipe up lalu tahan = Recents. Lewat layanan Accessibility yang hanya memasang strip sentuh tipis di tepi layar; tidak membaca isi layar. Opsional: beberapa app bank (misalnya BCA) menolak jalan selama ada layanan Accessibility yang aktif, jadi dari Settings launcher gesture ini bisa dimatikan dengan satu tap; menyalakan lagi lewat Settings sistem
+- Gesture navigasi untuk HP yang memaksa 3 tombol (misalnya HyperOS dengan launcher pihak ketiga): swipe dari tepi kiri/kanan = Back, swipe up dari bawah tengah = Home, swipe up lalu tahan = Recents. Lewat layanan Accessibility yang hanya memasang strip sentuh tipis di tepi layar; tidak membaca isi layar. Opsional: beberapa app bank (misalnya BCA) menolak jalan selama ada layanan Accessibility yang aktif, jadi dari Settings launcher gesture ini bisa dimatikan dengan satu tap; menyalakan lagi lewat Settings sistem. Kalau Android menandainya "Tidak berfungsi" (setelah update, atau saat HyperOS mematikan prosesnya), launcher menampilkannya sebagai *Not working* di Settings dan hint *fix gestures* di home; perbaikannya matikan lalu nyalakan lagi di Aksesibilitas. Di HyperOS, set Battery saver Polos ke *No restrictions* supaya jarang terjadi
 
 ### Wallpaper
 20 wallpaper yang digambar langsung dengan Compose Canvas, bukan gambar, jadi tajam di resolusi apa pun dan APK tetap kecil. Semua berlatar hitam dengan garis redup (#262626) supaya teks tetap kontras:
