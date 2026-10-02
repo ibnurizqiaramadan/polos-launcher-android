@@ -198,6 +198,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import java.time.LocalDate
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 import kotlin.math.exp
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -384,7 +387,33 @@ class MainActivity : ComponentActivity() {
         val next = getSystemService(AlarmManager::class.java).nextAlarmClock ?: return null
         val creator = next.showIntent?.creatorPackage ?: return next.triggerTime // no creator to check: trust it
         val clocks = packageManager.queryIntentActivities(Intent(AlarmClock.ACTION_SHOW_ALARMS), 0).map { it.activityInfo.packageName }
-        return next.triggerTime.takeIf { creator in clocks }
+        if (creator !in clocks) return null
+        return formattedNextAlarm(next.triggerTime) ?: next.triggerTime
+    }
+
+    // HyperOS's Clock registers its "alarm arriving" stage (15 min early) as an alarm clock too, so nextAlarmClock
+    // runs early there. The system's formatted next-alarm string ("Jum 08.00") still holds the real ring time on
+    // those phones, and elsewhere the framework derives it from the same alarm clock, so it never disagrees.
+    // It's written with the locale's "EHm"/"Ehma" pattern, so it's parsed back with exactly that.
+    @Suppress("DEPRECATION")
+    private fun formattedNextAlarm(fallback: Long): Long? {
+        val text = Settings.System.getString(contentResolver, Settings.System.NEXT_ALARM_FORMATTED)?.takeIf { it.isNotBlank() } ?: return null
+        val locale = Locale.getDefault()
+        val pattern = DateFormat.getBestDateTimePattern(locale, if (DateFormat.is24HourFormat(this)) "EHm" else "Ehma")
+        val parsed = runCatching { SimpleDateFormat(pattern, locale).parse(text) }.getOrNull() ?: return null
+        val wanted = Calendar.getInstance().apply { time = parsed }
+        // the string has only a weekday and a time: the first such moment at or after the system's own trigger
+        val at = Calendar.getInstance().apply {
+            timeInMillis = fallback
+            set(Calendar.HOUR_OF_DAY, wanted.get(Calendar.HOUR_OF_DAY))
+            set(Calendar.MINUTE, wanted.get(Calendar.MINUTE))
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            if (timeInMillis < fallback - 60_000) add(Calendar.DAY_OF_MONTH, 1)
+            while (get(Calendar.DAY_OF_WEEK) != wanted.get(Calendar.DAY_OF_WEEK)) add(Calendar.DAY_OF_MONTH, 1)
+        }
+        // only trust it as a correction of the same alarm, not as a different one days later
+        return at.timeInMillis.takeIf { it - fallback in 0..24 * 3600_000L }
     }
 
     // Once Android stops showing the dialog (denied twice, or "don't ask again"), the switch lives in App info.
