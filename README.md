@@ -1,90 +1,133 @@
 # Polos
 
-Launcher Android minimalis: hitam polos, teks saja. Home screen replacement berbasis native **Kotlin + Jetpack Compose**. Package `id.ibnurizqia.launcher`.
+Launcher Android yang hitam polos dan hanya berisi teks. Tanpa ikon, tanpa widget, tanpa warna: jam, beberapa baris info hari ini, favorit, dan daftar aplikasi. Latar #000000 murni supaya piksel AMOLED benar-benar mati, dengan pilihan wallpaper bergaris tipis yang digambar sendiri oleh launcher, tetap gelap.
 
-## Rekomendasi Tech Stack
-- **Language:** Kotlin 2.x
-- **UI Framework:** Jetpack Compose (Material 3)
-- **Min SDK:** 26 (Android 8.0 Oreo) / Target SDK: 34+ (Android 14/15)
-- **Architecture:** Clean Architecture + MVVM / MVI dengan Kotlin Coroutines & StateFlow
-- **Dependency Injection:** Hilt / Koin (opsional, untuk launcher ultra-ringan manual DI sudah sangat cukup)
+Semua yang ada di home bisa dimatikan satu per satu dari halaman Settings. Tidak ada analitik, tidak ada akun, tidak ada iklan. Satu-satunya koneksi internet adalah ke Open-Meteo untuk cuaca, dan itu pun hanya kalau diaktifkan.
 
-## Essential Launcher Android Manifest
-Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan intent-filter berikut pada MainActivity:
-
-```xml
-<activity
-    android:name=".MainActivity"
-    android:exported="true"
-    android:launchMode="singleTask"
-    android:clearTaskOnLaunch="true"
-    android:stateNotNeeded="true"
-    android:theme="@style/Theme.Polos">
-    <intent-filter>
-        <action android:name="android.intent.action.MAIN" />
-        <category android:name="android.intent.category.HOME" />
-        <category android:name="android.intent.category.DEFAULT" />
-    </intent-filter>
-</activity>
-```
-
-## Core Launcher API & Concepts
-1. **Query Installed Apps:**
-   - Gunakan `LauncherApps.getActivityList(null, Process.myUserHandle())` (lebih disukai untuk launcher modern) atau `PackageManager.queryIntentActivities(...)`.
-   - Wajib deklarasi permission query di manifest:
-     ```xml
-     <queries>
-         <intent>
-             <action android:name="android.intent.action.MAIN" />
-             <category android:name="android.intent.category.LAUNCHER" />
-         </intent>
-     </queries>
-     ```
-2. **Launch Application:**
-   - `context.startActivity(packageManager.getLaunchIntentForPackage(packageName))`
-3. **App Info / Uninstall Intent:**
-   - Long press item -> buka App Info setting sistem: `Settings.ACTION_APPLICATION_DETAILS_SETTINGS`
-4. **Transparent Status/Nav Bar (Edge-to-Edge):**
-   - Compose: `enableEdgeToEdge()` + WindowInsets handling agar wallpaper sistem tetap tembus pandang jika diinginkan.
+Package: `id.ibnurizqia.launcher`. Android 8.0 (API 26) ke atas.
 
 ## Fitur
-- [x] Daftar aplikasi teks vertikal A-Z (tanpa icon yang mendistraksi)
-- [ ] Opsi toggle icon monochrome
-- [x] Alphabet fast scroller (wave) di app drawer
-- [x] Tema pitch black (#000) untuk hemat baterai AMOLED
-- [x] Search bar di bawah drawer (keyboard muncul saat di-tap)
-- [x] Pin favorit di home screen (maksimal 6 app esensial), urutan bisa diatur dengan tahan lalu geser
-- [x] Gesture swipe up (app drawer) & swipe down (notifikasi sistem)
-- [x] Indikator jam (24 jam, center), tanggal, dan battery percentage minimalis
-- [x] Info cuaca (Open-Meteo, lokasi perkiraan)
-- [x] Alarm berikutnya & acara kalender berikutnya (24 jam ke depan)
-- [x] Screen time hari ini (Usage access)
-- [x] Shortcut Phone & Camera di pojok bawah home
-- [x] Now playing + kontrol Prev/Play-Pause/Next (butuh akses notifikasi)
-- [x] Gesture navigasi untuk HP 3 tombol (Accessibility): swipe pinggir = Back, swipe up bawah = Home, swipe up + tahan = Recents
-- [x] Opsi sembunyikan aplikasi (Hide apps) & rename label app
-- [x] 20 wallpaper buatan launcher (garis: Lines, Diamonds, Grid, Chevron, Hexagons, Spiral, Rays...; abstrak: Contours, Ridges, Flow, Arcs, Mesh, Stars; glow: Glow, Ember, Aurora), semuanya gelap biar tetap hemat AMOLED
-- [x] Halaman Settings: wallpaper, tampil/sembunyikan tiap elemen home, opsi drawer, gesture
-- [x] Blur di belakang app drawer dengan slider level 1–10 (Android 12+; kalau dimatikan, latar drawer hitam pekat)
 
-## Cara Pakai
-- **Swipe up** di home: buka app drawer (tap search untuk mengetik; hasil muncul dari bawah, yang paling cocok tepat di atas search; Enter = buka hasil itu)
-- **Swipe down** di home: buka panel notifikasi
-- **Swipe down** di drawer saat list paling atas: tutup drawer (drawer ikut jari, tarik pendek = batal)
-- **Show: weather / events / screen time / gestures / music** di home: aktifkan info tersebut (tiap hint hilang setelah di-tap sekali; bisa diaktifkan lagi lewat App info)
-- **Tap jam** = alarm, **tap tanggal** = kalender, **tap cuaca** = prakiraan, **tap baterai** = pemakaian baterai, **tap acara** = buka acaranya
-- **Long press** app: Add to home / Rename / Hide / App info
-- **Tahan favorit lalu geser** ke atas/bawah: ubah urutan favorit di home (tahan tanpa geser tetap buka menu)
-- **Long press** area kosong di home (atau "Launcher settings" paling bawah drawer): halaman Settings, semua perubahan langsung berlaku
-- **Drag huruf** di kanan drawer (# A–Z penuh setinggi list): lompat ke huruf itu; huruf redup = tidak ada app, lompat ke huruf berikutnya
-- App tersembunyi ada di "Hidden apps (n)" paling bawah drawer
-- Build & install: `./gradlew installDebug`, lalu tekan Home dan pilih "Polos"
+### Home
+- Jam 24 jam besar, tanggal, cuaca sekarang dan persentase baterai di tengah atas
+- Kolom **Today**: suhu tertinggi/terendah, peluang hujan, acara kalender hari ini dan berikutnya, alarm berikutnya
+- Kolom **Device**: pemakaian RAM, rentang clock CPU plus status panas, arus baterai (charging/using) dan suhu, diperbarui tiap 5 detik hanya saat home terlihat
+- **Favorit** maksimal 6 app, rata kanan dalam jangkauan jempol; tahan lalu geser untuk mengatur urutan
+- **Now playing** dengan tombol prev / play-pause / next, untuk pemutar musik apa pun
+- Shortcut Phone dan Camera di pojok bawah, screen time hari ini di tengah
+- Baris "Show:" untuk fitur yang masih butuh izin; tap untuk memberi izin, tahan untuk menyembunyikan
+
+### App drawer
+- Daftar teks A–Z, swipe up dari home untuk membuka
+- Index alfabet # A–Z di sisi kanan setinggi list, dengan efek gelombang saat digeser
+- Pencarian di bawah, dekat jempol; hasil tersusun dari bawah dengan yang paling cocok tepat di atas kolom pencarian, Enter untuk membuka
+- Baris **Recent** sampai 10 app, bisa digeser ke samping
+- Sembunyikan app dan ganti nama label; app kembar (nama sama) diberi subtitle package
+- Latar drawer memperlihatkan home yang diblur, dengan level blur 1–10 (Android 12+); blur mati = hitam pekat
+- Tarik ke bawah saat list di posisi teratas untuk menutup drawer
+
+### Gesture
+- Swipe up: drawer. Swipe down: panel notifikasi. Double-tap area kosong: kunci layar
+- Gesture navigasi untuk HP yang memaksa 3 tombol (misalnya HyperOS dengan launcher pihak ketiga): swipe dari tepi kiri/kanan = Back, swipe up dari bawah tengah = Home, swipe up lalu tahan = Recents. Lewat layanan Accessibility yang hanya memasang strip sentuh tipis di tepi layar; tidak membaca isi layar
+
+### Wallpaper
+20 wallpaper yang digambar langsung dengan Compose Canvas, bukan gambar, jadi tajam di resolusi apa pun dan APK tetap kecil. Semua berlatar hitam dengan garis redup (#262626) supaya teks tetap kontras:
+- Garis: Lines, Diamonds, Grid, Chevron, Hexagons, Spiral, Rays, Waves, Rings
+- Abstrak: Contours (garis kontur), Ridges (ala sampul *Unknown Pleasures*), Flow (garis arus), Arcs (ubin Truchet), Mesh (segitiga), Dots, Stars
+- Glow: Glow, Ember, Aurora, pendar warna gelap tanpa garis
+- Black: hitam polos
+
+### Settings
+Tahan area kosong di home, atau "Launcher settings" di paling bawah drawer. Semua perubahan langsung berlaku:
+- Wallpaper
+- Home: cuaca, persentase baterai, now playing, acara kalender, alarm, Device, screen time, Phone dan Camera, baris "Show:"
+- App drawer: blur dan levelnya, Recent, index alfabet, keyboard langsung terbuka
+- Gesture: gesture navigasi, double-tap kunci layar, swipe down notifikasi
+- Pintasan ke pemilih default home app dan halaman izin
+
+Elemen yang dimatikan juga berhenti mengambil data: Device mati berarti tidak ada polling, cuaca mati berarti tidak ada permintaan jaringan.
+
+## Cara pakai
+- **Swipe up** di home: buka app drawer. **Swipe down**: panel notifikasi
+- **Tap jam** = alarm, **tap tanggal** = kalender, **tap cuaca** = prakiraan, **tap baterai** = detail baterai, **tap acara** = buka acaranya
+- **Tahan app**: Add to home / Rename / Hide / App info
+- **Tahan favorit lalu geser** ke atas atau bawah: ubah urutan. Tahan tanpa geser tetap membuka menu
+- **Tahan area kosong** di home: Settings
+- **Geser di huruf** sisi kanan drawer: lompat ke huruf itu; huruf redup berarti tidak ada app dengan awalan itu
+- App tersembunyi ada di "Hidden apps (n)" di paling bawah drawer
+
+## Izin
+Semua opsional. Launcher tetap berfungsi penuh tanpa satu pun izin ini; yang hilang hanya info terkait.
+
+| Izin | Untuk | Dipakai oleh |
+|---|---|---|
+| Lokasi perkiraan | Cuaca (Open-Meteo, dengan nama daerah dari Geocoder) | `Weather.kt` |
+| Kalender | Acara hari ini dan berikutnya | `MainActivity.kt` |
+| Usage access | Screen time dan daftar Recent | `ScreenTime.kt` |
+| Akses notifikasi | Now playing, lewat `MediaSessionManager` (notifikasi tidak dibaca) | `NowPlaying.kt` |
+| Accessibility | Gesture navigasi dan kunci layar, lewat `performGlobalAction` (isi layar tidak dibaca) | `Gestures.kt` |
+| Internet | Hanya ke `api.open-meteo.com` | `Weather.kt` |
+
+## Tech stack
+
+| | |
+|---|---|
+| Bahasa | Kotlin 2.1.20 |
+| UI | Jetpack Compose, Material 3 (BOM 2025.06.01) |
+| Build | Android Gradle Plugin 8.11.0, Gradle 8.14.3, JDK 17 toolchain (diunduh otomatis lewat foojay) |
+| SDK | min 26, target dan compile 36 |
+| Dependensi | `material3`, `activity-compose`, `core-ktx`. Tidak ada library pihak ketiga lain |
+| Release | R8 minify dan shrinkResources; APK sekitar 1,2 MB |
+
+Arsitektur sengaja dibuat sederhana: satu Activity dengan state Compose, SharedPreferences untuk semua pengaturan, coroutine untuk kerja I/O. Tanpa ViewModel, DI, atau database, karena tidak ada yang membutuhkannya.
+
+## Struktur folder
+
+```
+app/src/main/
+├── AndroidManifest.xml          intent-filter HOME, izin, dua service (gesture, media)
+├── java/id/ibnurizqia/launcher/
+│   ├── MainActivity.kt          Activity, state, home screen, app drawer, menu, dialog, halaman Settings
+│   ├── LauncherSettings.kt      semua pengaturan: pilihan wallpaper dan toggle, tersimpan ke SharedPreferences
+│   ├── Wallpaper.kt             20 wallpaper yang digambar dengan Canvas (path, titik, gradien)
+│   ├── Gestures.kt              GestureService (Accessibility): strip tepi untuk Back/Home/Recents, kunci layar
+│   ├── NowPlaying.kt            MediaListener dan MediaWatcher untuk now playing, plus ikon transport
+│   ├── Weather.kt               lokasi, Geocoder, dan permintaan ke Open-Meteo
+│   ├── ScreenTime.kt            screen time hari ini dan package yang baru dipakai (UsageStatsManager)
+│   └── SystemStats.kt           RAM, clock CPU (sysfs), status panas, dan detail baterai
+└── res/
+    ├── values/strings.xml       deskripsi layanan Accessibility
+    ├── values/themes.xml        tema window hitam, tanpa action bar
+    └── xml/gesture_service.xml  konfigurasi layanan Accessibility
+```
+
+File di root: `build.gradle.kts` dan `app/build.gradle.kts` (plugin, dependensi, signing release), `settings.gradle.kts` (foojay resolver), `LICENSE`.
+
+## Build
+
+```sh
+./gradlew assembleRelease      # app/build/outputs/apk/release/app-release.apk
+./gradlew installDebug         # lalu tekan Home dan pilih "Polos"
+```
+
+Build release ditandatangani kalau ada `keystore.properties` di root (file ini dan `*.jks` ada di `.gitignore`):
+
+```properties
+storeFile=../polos.jks
+storePassword=...
+keyAlias=...
+keyPassword=...
+```
+
+Tanpa file itu, `assembleRelease` tetap jalan tapi menghasilkan APK tanpa tanda tangan.
+
+### Catatan HyperOS / MIUI
+- Play Protect bisa memblokir pemasangan APK sideload yang meminta akses Accessibility atau notifikasi. Pasang lewat `adb install`, atau matikan sementara pemindaian Play Protect
+- Sebelum mengaktifkan layanan Accessibility atau akses notifikasi untuk APK sideload: App info → ⋮ → *Allow restricted settings*
+- HyperOS memaksa navigasi 3 tombol untuk launcher pihak ketiga. Gesture navigasi Polos dibuat untuk itu. Kalau mau menyembunyikan tombolnya: `adb shell settings put global force_fsg_nav_bar 1` (kembalikan dengan `0`)
 
 ## Lisensi
 
 Polos dirilis di bawah [GNU GPLv3](LICENSE). Bebas dipakai dan diubah; versi turunannya wajib tetap open source dengan lisensi yang sama.
 
 Copyright (C) 2026 Ibnu Rizqia Ramadan
-
----
-*Environment coding-server-0: Java OpenJDK 21 siap pakai.*
