@@ -95,7 +95,11 @@ app/src/main/
 │   ├── Weather.kt               lokasi, Geocoder, dan permintaan ke Open-Meteo
 │   ├── ScreenTime.kt            screen time hari ini dan package yang baru dipakai (UsageStatsManager)
 │   └── SystemStats.kt           RAM, clock CPU (sysfs), status panas, dan detail baterai
+├── ic_launcher-playstore.png    ikon 512×512 untuk halaman Play Store (tidak ikut ke APK)
 └── res/
+    ├── drawable/ic_launcher_foreground.xml  logo "Po" sebagai vector; juga jadi layer monokrom (themed icon)
+    ├── mipmap-anydpi-v26/ic_launcher.xml    adaptive icon: latar hitam, logo, monokrom
+    ├── values/colors.xml        hitam untuk latar ikon
     ├── values/strings.xml       deskripsi layanan Accessibility
     ├── values/themes.xml        tema window hitam, tanpa action bar
     └── xml/gesture_service.xml  konfigurasi layanan Accessibility

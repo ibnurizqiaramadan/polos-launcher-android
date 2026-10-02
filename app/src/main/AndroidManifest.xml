@@ -27,6 +27,7 @@
     </queries>
 
     <application
+        android:icon="@mipmap/ic_launcher"
         android:label="Polos"
         android:theme="@style/Theme.Polos">
         <activity
