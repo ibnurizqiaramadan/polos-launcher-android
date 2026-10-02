@@ -211,7 +211,7 @@ fun AccessPage(access: List<Access>, onAppInfo: () -> Unit, onBack: () -> Unit) 
                     it.title, it.purpose,
                     value = if (it.granted) "Granted" else "Not granted",
                     emphasised = !it.granted,
-                    onClick = if (it.granted) onAppInfo else it.grant,
+                    onClick = if (it.granted) (it.revoke ?: onAppInfo) else it.grant,
                 )
             },
         )
@@ -264,8 +264,11 @@ fun GuidePage(navGestures: Boolean, onReplay: () -> Unit, onBack: () -> Unit) {
                 SettingRow("Swipe in from the left or right edge", "Back"),
                 SettingRow("Swipe up from the bottom centre", "Home"),
                 SettingRow("Swipe up and hold", "Recents"),
-                if (navGestures) SettingRow("On", "Polos gestures is enabled in Accessibility")
-                else SettingRow("Off", "Turn on under Settings > Gestures > Navigation gestures"),
+                SettingRow(
+                    if (navGestures) "On" else "Off",
+                    "Optional, for phones that force 3-button navigation (HyperOS). Some banking apps refuse to run while " +
+                        "any accessibility service is on; switch it under Settings > Gestures > Navigation gestures",
+                ),
             ),
         )
         SettingGroup("Highlights", listOf(SettingRow("Show the highlights again", "The short tour from the first start", onClick = onReplay)))

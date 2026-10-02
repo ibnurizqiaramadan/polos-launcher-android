@@ -36,6 +36,12 @@ class GestureService : AccessibilityService() {
         /** Locks like the power button (biometrics keep working, unlike DevicePolicyManager.lockNow). False if unavailable. */
         fun lockScreen(): Boolean =
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && running?.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN) == true
+
+        /**
+         * Switches the service off, as if toggled in Accessibility settings; turning it back on has to happen
+         * there. For banking apps that refuse to run while any accessibility service is on. False if it's off already.
+         */
+        fun stop(): Boolean = running?.let { it.disableSelf(); true } ?: false
     }
 
     override fun onServiceConnected() {

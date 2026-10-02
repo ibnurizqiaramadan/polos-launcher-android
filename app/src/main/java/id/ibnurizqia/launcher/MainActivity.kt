@@ -236,8 +236,8 @@ class CalendarEvent(val id: Long, val title: String, val begin: Long)
 /** A "Show: ..." setup shortcut: tap to grant, long-press to stop offering it. */
 class Hint(val label: String, val onTap: () -> Unit, val onDismiss: () -> Unit)
 
-/** One of the optional accesses: whether it's granted and how to go and grant it. */
-class Access(val title: String, val purpose: String, val granted: Boolean, val grant: () -> Unit)
+/** One of the optional accesses: whether it's granted, how to go and grant it, and (if the app can) how to drop it. */
+class Access(val title: String, val purpose: String, val granted: Boolean, val grant: () -> Unit, val revoke: (() -> Unit)? = null)
 
 private const val LOCATION = Manifest.permission.ACCESS_COARSE_LOCATION
 private const val CALENDAR = Manifest.permission.READ_CALENDAR
@@ -250,6 +250,7 @@ class MainActivity : ComponentActivity() {
     private var hidden by mutableStateOf(emptySet<String>())
     private var renaming by mutableStateOf<App?>(null)
     private var explainGestures by mutableStateOf(false)
+    private var confirmGesturesOff by mutableStateOf(false)
     private var showBattery by mutableStateOf(false)
     private var drawerOpen by mutableStateOf(false)
     private var settingsOpen by mutableStateOf(false)
@@ -341,7 +342,7 @@ class MainActivity : ComponentActivity() {
                         SettingsPage(
                             settings,
                             navGestures = navGestures,
-                            onGestures = { explainGestures = true },
+                            onGestures = { if (navGestures) confirmGesturesOff = true else explainGestures = true },
                             onDefaultHome = { launch(Intent(Settings.ACTION_HOME_SETTINGS)) },
                             access = access,
                             onPermissions = { accessOpen = true },
@@ -380,6 +381,9 @@ class MainActivity : ComponentActivity() {
                             },
                             onDismiss = { showBattery = false },
                         )
+                    }
+                    if (confirmGesturesOff) {
+                        GesturesOffDialog(onTurnOff = { confirmGesturesOff = false; stopGestures() }, onDismiss = { confirmGesturesOff = false })
                     }
                     if (explainGestures) {
                         GesturesDialog(
@@ -518,11 +522,14 @@ class MainActivity : ComponentActivity() {
     // every optional access in one list, for the Permissions page and its "n of 5 granted" summary
     private fun refreshAccess() {
         access = listOf(
-            Access("Location", "Weather for your area", granted(LOCATION)) { askPermission(LOCATION) },
-            Access("Calendar", "Today's and upcoming events", granted(CALENDAR)) { askPermission(CALENDAR) },
+            Access("Location", "Weather for your area", granted(LOCATION), grant = { askPermission(LOCATION) }),
+            Access("Calendar", "Today's and upcoming events", granted(CALENDAR), grant = { askPermission(CALENDAR) }),
             Access("Usage access", "Screen time and recent apps", hasUsageAccess(), ::openUsageAccess),
             Access("Notification access", "Now playing and its controls", hasNotificationAccess(), ::openNotificationAccess),
-            Access("Accessibility", "Navigation gestures and double-tap to lock", gesturesEnabled()) { explainGestures = true },
+            Access(
+                "Accessibility", "Navigation gestures and double-tap to lock. Optional; some banking apps refuse to run while it's on",
+                gesturesEnabled(), grant = { explainGestures = true }, revoke = { confirmGesturesOff = true },
+            ),
         )
     }
 
@@ -612,6 +619,16 @@ class MainActivity : ComponentActivity() {
     }
 
     // hints and weather depend on what's switched on, so catch up with any change made in settings
+    // the system flips the setting a moment after disableSelf, so re-read it then
+    private fun stopGestures() {
+        GestureService.stop()
+        lifecycleScope.launch {
+            delay(400)
+            navGestures = gesturesEnabled()
+            refreshAccess()
+        }
+    }
+
     private fun endTour() {
         tour = false
         prefs.edit { putBoolean("tour:done", true) }
@@ -1611,6 +1628,22 @@ private fun BatteryDialog(onUsage: () -> Unit, onDismiss: () -> Unit) {
     )
 }
 
+/** Switching the service off is one tap here; on is a trip to Accessibility settings, so it's worth confirming. */
+@Composable
+private fun GesturesOffDialog(onTurnOff: () -> Unit, onDismiss: () -> Unit) = AlertDialog(
+    onDismissRequest = onDismiss,
+    title = { Text("Turn off navigation gestures?") },
+    text = {
+        Text(
+            "Back, Home and Recents swipes and double-tap to lock stop until you turn \"Polos gestures\" on again in " +
+                "Accessibility settings. Handy before opening a banking app such as BCA, which refuses to run while any " +
+                "accessibility service is on."
+        )
+    },
+    confirmButton = { TextButton(onClick = onTurnOff) { Text("Turn off") } },
+    dismissButton = { TextButton(onClick = onDismiss) { Text("Keep on") } },
+)
+
 /** Accessibility needs a clear disclosure before sending the user to turn it on. */
 @Composable
 private fun GesturesDialog(onContinue: () -> Unit, onDismiss: () -> Unit) = AlertDialog(
@@ -1623,6 +1656,8 @@ private fun GesturesDialog(onContinue: () -> Unit, onDismiss: () -> Unit) = Aler
                 "like the power button.\n\n" +
                 "This uses Android's Accessibility service only to trigger these actions. " +
                 "It doesn't read or collect anything on your screen.\n\n" +
+                "It's optional, meant for phones that force 3-button navigation. Some banking apps (e.g. BCA) refuse to run " +
+                "while any accessibility service is on; you can turn it off again from Polos' settings in one tap.\n\n" +
                 "Next, turn on \"Polos gestures\" in Accessibility settings. If Android says it's a " +
                 "restricted setting, first open App info > \u22ee > Allow restricted settings."
         )
@@ -1743,7 +1778,13 @@ private fun SettingsPage(
         SettingGroup(
             "Gestures",
             listOf(
-                SettingRow("Navigation gestures", "Swipe in from the edges for Back, Home and Recents", value = if (navGestures) "On" else "Off", onClick = onGestures),
+                SettingRow(
+                    "Navigation gestures",
+                    if (navGestures) "Tap to turn off, e.g. before a banking app that refuses to run while an accessibility service is on"
+                    else "Optional, for phones that force 3-button navigation (HyperOS): swipe in from the edges for Back, Home and Recents",
+                    value = if (navGestures) "On" else "Off",
+                    onClick = onGestures,
+                ),
                 settings.doubleTapLock.row("Double-tap to lock", if (navGestures) "Double-tap an empty spot on home" else "Needs navigation gestures on"),
                 settings.swipeDown.row("Swipe down for notifications"),
             ),
