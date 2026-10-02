@@ -178,6 +178,47 @@ fun TourOverlay(spots: Map<String, Rect>, onDone: () -> Unit) {
     }
 }
 
+/**
+ * Every optional access with whether it's granted. A missing one opens the place to grant it; a granted one
+ * opens App info, where it can be taken away again.
+ */
+@Composable
+fun AccessPage(access: List<Access>, onAppInfo: () -> Unit, onBack: () -> Unit) {
+    BackHandler(onBack = onBack)
+    val granted = access.count { it.granted }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .safeDrawingPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 16.dp, end = 16.dp, bottom = 24.dp)
+    ) {
+        Row(Modifier.height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+            Spacer(Modifier.width(4.dp))
+            Text("Permissions", fontSize = 22.sp)
+        }
+        Text(
+            if (granted == access.size) "Everything is granted. All of these are optional; each one only adds the feature next to it."
+            else "$granted of ${access.size} granted. All are optional; each one only adds the feature next to it. Tap one to grant it.",
+            fontSize = 14.sp, color = TextMuted, lineHeight = 20.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+        SettingGroup(
+            "Access",
+            access.map {
+                SettingRow(
+                    it.title, it.purpose,
+                    value = if (it.granted) "Granted" else "Not granted",
+                    emphasised = !it.granted,
+                    onClick = if (it.granted) onAppInfo else it.grant,
+                )
+            },
+        )
+        SettingGroup("Everything else", listOf(SettingRow("App info", "Internet is the only other permission, used for the weather request alone", onClick = onAppInfo)))
+    }
+}
+
 /** Every gesture and tap in one place, plus a way to see the highlights again. */
 @Composable
 fun GuidePage(navGestures: Boolean, onReplay: () -> Unit, onBack: () -> Unit) {

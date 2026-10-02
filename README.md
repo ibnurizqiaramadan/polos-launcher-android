@@ -47,7 +47,8 @@ Tahan area kosong di home, atau "Launcher settings" di paling bawah drawer. Semu
 - Home: cuaca, persentase baterai, now playing, acara kalender, alarm, Device, screen time, Phone dan Camera, baris "Show:"
 - App drawer: latar (home diblur / wallpaper / hitam) dan level blur, Recent, index alfabet, keyboard langsung terbuka
 - Gesture: gesture navigasi, double-tap kunci layar, swipe down notifikasi
-- Pintasan ke pemilih default home app dan halaman izin
+- Halaman **Permissions**: tiap akses opsional dengan status Granted / Not granted; tap yang belum untuk langsung ke tempat memberinya. Baris di Settings menampilkan ringkasan "n of 5 granted"
+- Pintasan ke pemilih default home app
 
 Elemen yang dimatikan juga berhenti mengambil data: Device mati berarti tidak ada polling, cuaca mati berarti tidak ada permintaan jaringan.
 

@@ -236,6 +236,9 @@ class CalendarEvent(val id: Long, val title: String, val begin: Long)
 /** A "Show: ..." setup shortcut: tap to grant, long-press to stop offering it. */
 class Hint(val label: String, val onTap: () -> Unit, val onDismiss: () -> Unit)
 
+/** One of the optional accesses: whether it's granted and how to go and grant it. */
+class Access(val title: String, val purpose: String, val granted: Boolean, val grant: () -> Unit)
+
 private const val LOCATION = Manifest.permission.ACCESS_COARSE_LOCATION
 private const val CALENDAR = Manifest.permission.READ_CALENDAR
 
@@ -251,6 +254,8 @@ class MainActivity : ComponentActivity() {
     private var drawerOpen by mutableStateOf(false)
     private var settingsOpen by mutableStateOf(false)
     private var guideOpen by mutableStateOf(false)
+    private var accessOpen by mutableStateOf(false)
+    private var access by mutableStateOf(emptyList<Access>()) // re-read on every resume, so it follows the system settings
     private var tour by mutableStateOf(false) // the first-run highlights
     private val spots = mutableStateMapOf<String, Rect>() // where home's parts are, for the highlights
     private val settings by lazy { LauncherSettings(prefs) }
@@ -338,7 +343,8 @@ class MainActivity : ComponentActivity() {
                             navGestures = navGestures,
                             onGestures = { explainGestures = true },
                             onDefaultHome = { launch(Intent(Settings.ACTION_HOME_SETTINGS)) },
-                            onPermissions = { launch(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))) },
+                            access = access,
+                            onPermissions = { accessOpen = true },
                             onSource = { launch(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/ibnurizqiaramadan/polos-launcher-android"))) },
                             onGuide = { guideOpen = true },
                             onBack = ::closeSettings,
@@ -354,6 +360,13 @@ class MainActivity : ComponentActivity() {
                             onReplay = { guideOpen = false; closeSettings(); tour = true },
                             onBack = { guideOpen = false },
                         )
+                    }
+                    AnimatedVisibility(
+                        visible = accessOpen,
+                        enter = slideInHorizontally(tween(250, easing = EaseOutCubic)) { it / 10 } + fadeIn(tween(250)),
+                        exit = slideOutHorizontally(tween(180, easing = EaseInCubic)) { it / 10 } + fadeOut(tween(180)),
+                    ) {
+                        AccessPage(access, onAppInfo = ::openAppInfo, onBack = { accessOpen = false })
                     }
                     if (tour) TourOverlay(spots, onDone = ::endTour)
                     renaming?.let { app ->
@@ -399,6 +412,7 @@ class MainActivity : ComponentActivity() {
         refreshHints()
         refreshWeather()
         navGestures = gesturesEnabled()
+        refreshAccess()
         nextAlarm = nextClockAlarm()
         if (granted(CALENDAR)) {
             lifecycleScope.launch {
@@ -475,26 +489,41 @@ class MainActivity : ComponentActivity() {
             }
             if (settings.weather.on) hint("weather", LOCATION, granted(LOCATION)) { askPermission(LOCATION) }
             if (settings.events.on) hint("events", CALENDAR, granted(CALENDAR)) { askPermission(CALENDAR) }
-            if (settings.screenTime.on) hint("screen time", "usage", hasUsageAccess()) {
-                // straight to this app's toggle where supported, else the full list
-                runCatching { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.fromParts("package", packageName, null))) }
-                    .onFailure { launch(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
-            }
+            if (settings.screenTime.on) hint("screen time", "usage", hasUsageAccess(), ::openUsageAccess)
             // only offered on 3-button phones; with system gestures it would just double up
             if (usesButtonNavigation()) hint("gestures", "gestures", gesturesEnabled()) { explainGestures = true }
-            if (settings.music.on) hint("music", "media", hasNotificationAccess()) {
-                launch(
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
-                            Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
-                            ComponentName(this@MainActivity, MediaListener::class.java).flattenToString(),
-                        )
-                    } else {
-                        Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-                    }
-                )
-            }
+            if (settings.music.on) hint("music", "media", hasNotificationAccess(), ::openNotificationAccess)
         }
+    }
+
+    // straight to this app's toggle where supported, else the full list
+    private fun openUsageAccess() {
+        runCatching { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.fromParts("package", packageName, null))) }
+            .onFailure { launch(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+    }
+
+    private fun openNotificationAccess() = launch(
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
+                Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                ComponentName(this, MediaListener::class.java).flattenToString(),
+            )
+        } else {
+            Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+        }
+    )
+
+    private fun openAppInfo() = launch(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
+
+    // every optional access in one list, for the Permissions page and its "n of 5 granted" summary
+    private fun refreshAccess() {
+        access = listOf(
+            Access("Location", "Weather for your area", granted(LOCATION)) { askPermission(LOCATION) },
+            Access("Calendar", "Today's and upcoming events", granted(CALENDAR)) { askPermission(CALENDAR) },
+            Access("Usage access", "Screen time and recent apps", hasUsageAccess(), ::openUsageAccess),
+            Access("Notification access", "Now playing and its controls", hasNotificationAccess(), ::openNotificationAccess),
+            Access("Accessibility", "Navigation gestures and double-tap to lock", gesturesEnabled()) { explainGestures = true },
+        )
     }
 
     // Reads what Google Calendar (and any other synced calendar) keeps in the system provider;
@@ -590,6 +619,7 @@ class MainActivity : ComponentActivity() {
 
     private fun closeSettings() {
         guideOpen = false
+        accessOpen = false
         if (!settingsOpen) return
         settingsOpen = false
         refreshHints()
@@ -1611,6 +1641,7 @@ private fun SettingsPage(
     navGestures: Boolean,
     onGestures: () -> Unit,
     onDefaultHome: () -> Unit,
+    access: List<Access>,
     onPermissions: () -> Unit,
     onSource: () -> Unit,
     onGuide: () -> Unit,
@@ -1721,7 +1752,12 @@ private fun SettingsPage(
             "Launcher",
             listOf(
                 SettingRow("Default home app", "Choose which launcher the Home button opens", onClick = onDefaultHome),
-                SettingRow("Permissions", "Location, calendar and other access", onClick = onPermissions),
+                SettingRow(
+                    "Permissions",
+                    "Location, calendar, usage, notifications, accessibility",
+                    value = access.count { it.granted }.let { if (it == access.size) "All granted" else "$it of ${access.size} granted" },
+                    onClick = onPermissions,
+                ),
                 SettingRow("How to use", "Every gesture and tap, and the first-start highlights again", onClick = onGuide),
             ),
         )
@@ -1748,6 +1784,7 @@ internal class SettingRow(
     val summary: String? = null,
     val checked: Boolean? = null,
     val value: String? = null,
+    val emphasised: Boolean = false, // bright value text, for something that needs attention
     val enabled: Boolean = true,
     val onClick: (() -> Unit)? = null,
     val below: (@Composable () -> Unit)? = null,
@@ -1829,7 +1866,7 @@ internal fun SettingGroup(title: String, rows: List<SettingRow>) {
                     }
                     row.value?.let {
                         Spacer(Modifier.width(16.dp))
-                        Text(it, fontSize = 14.sp, color = TextSecondary)
+                        Text(it, fontSize = 14.sp, color = if (row.emphasised) TextPrimary else TextSecondary)
                     }
                 }
                 row.below?.invoke()
