@@ -80,5 +80,11 @@ Agar aplikasi dikenali sebagai Home Launcher oleh Android OS,  wajib menyertakan
 - App tersembunyi ada di "Hidden apps (n)" paling bawah drawer
 - Build & install: `./gradlew installDebug`, lalu tekan Home dan pilih "Polos"
 
+## Lisensi
+
+Polos dirilis di bawah [GNU GPLv3](LICENSE). Bebas dipakai dan diubah; versi turunannya wajib tetap open source dengan lisensi yang sama.
+
+Copyright (C) 2026 Ibnu Rizqia Ramadan
+
 ---
 *Environment coding-server-0: Java OpenJDK 21 siap pakai.*
