@@ -23,7 +23,7 @@ Package: `id.ibnurizqia.launcher`. Android 8.0 (API 26) ke atas.
 - Pencarian di bawah, dekat jempol; hasil tersusun dari bawah dengan yang paling cocok tepat di atas kolom pencarian, Enter untuk membuka
 - Baris **Recent** sampai 10 app, bisa digeser ke samping
 - Sembunyikan app dan ganti nama label; app kembar (nama sama) diberi subtitle package
-- Latar drawer memperlihatkan home yang diblur, dengan level blur 1–10 (Android 12+); blur mati = hitam pekat
+- Latar drawer bisa dipilih: home yang diblur (level 1–10, Android 12+), wallpaper saja, atau hitam pekat
 - Tarik ke bawah saat list di posisi teratas untuk menutup drawer
 
 ### Gesture
@@ -41,7 +41,7 @@ Package: `id.ibnurizqia.launcher`. Android 8.0 (API 26) ke atas.
 Tahan area kosong di home, atau "Launcher settings" di paling bawah drawer. Semua perubahan langsung berlaku:
 - Wallpaper
 - Home: cuaca, persentase baterai, now playing, acara kalender, alarm, Device, screen time, Phone dan Camera, baris "Show:"
-- App drawer: blur dan levelnya, Recent, index alfabet, keyboard langsung terbuka
+- App drawer: latar (home diblur / wallpaper / hitam) dan level blur, Recent, index alfabet, keyboard langsung terbuka
 - Gesture: gesture navigasi, double-tap kunci layar, swipe down notifikasi
 - Pintasan ke pemilih default home app dan halaman izin
 

@@ -39,7 +39,21 @@ class LauncherSettings(private val prefs: SharedPreferences) {
     val hints = Option("show:hints", true)
 
     // app drawer
-    val blur = Option("drawer:blur", true)
+    /** What shows behind the app drawer: the blurred home screen, just the wallpaper, or plain black. */
+    enum class DrawerBackground { Home, Wallpaper, Black }
+
+    // the earlier "blur" toggle maps onto this: off meant black
+    var drawerBackground by mutableStateOf(
+        DrawerBackground.entries.find { it.name == prefs.getString("drawer:background", null) }
+            ?: if (prefs.getBoolean("drawer:blur", true)) DrawerBackground.Home else DrawerBackground.Black
+    )
+        private set
+
+    fun pick(background: DrawerBackground) {
+        drawerBackground = background
+        prefs.edit { putString("drawer:background", background.name) }
+    }
+
     var blurLevel by mutableIntStateOf(prefs.getInt("drawer:blur_level", 5)) // 1..10, x5dp of blur radius
         private set
 

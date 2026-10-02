@@ -115,6 +115,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -183,6 +186,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import id.ibnurizqia.launcher.LauncherSettings.DrawerBackground
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
@@ -269,23 +273,28 @@ class MainActivity : ComponentActivity() {
                     val menu: AppMenu = { app, close -> Menu(app, close) }
                     BackHandler { drawerOpen = false } // home screen: back never leaves the launcher
                     val drawer by animateFloatAsState(if (drawerOpen) 1f else 0f, tween(if (drawerOpen) 250 else 180), label = "drawer")
-                    val blur = settings.blur.on && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    // blur needs Android 12; below that "Home" would be unreadable text on text, so it's black
+                    val behind = settings.drawerBackground.let {
+                        if (it == DrawerBackground.Home && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) DrawerBackground.Black else it
+                    }
                     // Home (wallpaper included) stays put under the drawer, sinking back as it opens: blurred and
-                    // dimmed, or with blur off simply faded to black, which is also the battery-friendliest.
+                    // dimmed; or only its content fades, leaving the wallpaper crisp; or it all fades to black,
+                    // which is also the battery-friendliest.
                     Box(
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
                                 val radius = drawer * (settings.blurLevel * 5).dp.toPx()
-                                renderEffect = if (blur && radius >= 1f) BlurEffect(radius, radius, TileMode.Decal) else null
+                                renderEffect = if (behind == DrawerBackground.Home && radius >= 1f) BlurEffect(radius, radius, TileMode.Decal) else null
                             }
                             .drawWithContent {
                                 drawContent()
-                                drawRect(Color.Black, alpha = drawer * if (blur) 0.6f else 1f)
+                                val dim = when (behind) { DrawerBackground.Home -> 0.6f; DrawerBackground.Wallpaper -> 0f; DrawerBackground.Black -> 1f }
+                                drawRect(Color.Black, alpha = drawer * dim)
                             }
                     ) {
                         Crossfade(settings.wallpaper, animationSpec = tween(300), label = "wallpaper") { Box(Modifier.fillMaxSize().wallpaper(it)) }
-                        HomeScreen(menu)
+                        Box(Modifier.graphicsLayer { alpha = if (behind == DrawerBackground.Wallpaper) 1f - drawer else 1f }) { HomeScreen(menu) }
                     }
                     AnimatedVisibility(
                         visible = drawerOpen,
@@ -1625,13 +1634,27 @@ private fun SettingsPage(
         SettingGroup(
             "App drawer",
             listOf(
-                settings.blur.row(
-                    "Blur behind drawer",
-                    if (canBlur) "Home stays softly visible; off fades it to black" else "Needs Android 12 or newer",
-                    enabled = canBlur,
-                ),
-                // only while blur is on: a strength for something that's off would just be noise
-                if (canBlur && settings.blur.on) {
+                SettingRow(
+                    "Background",
+                    when (settings.drawerBackground) {
+                        DrawerBackground.Home -> if (canBlur) "The home screen, blurred and dimmed" else "Blur needs Android 12; shows black instead"
+                        DrawerBackground.Wallpaper -> "Only the wallpaper; the home screen's text hides"
+                        DrawerBackground.Black -> "Plain black, the easiest on an AMOLED battery"
+                    },
+                ) {
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                        DrawerBackground.entries.forEachIndexed { i, option ->
+                            SegmentedButton(
+                                selected = option == settings.drawerBackground,
+                                onClick = { settings.pick(option) },
+                                shape = SegmentedButtonDefaults.itemShape(i, DrawerBackground.entries.size),
+                                colors = SegmentedColors,
+                            ) { Text(option.name, fontSize = 14.sp) }
+                        }
+                    }
+                },
+                // only while the home screen is behind the drawer: a strength for anything else would just be noise
+                if (canBlur && settings.drawerBackground == DrawerBackground.Home) {
                     SettingRow("Blur level", value = "${settings.blurLevel}") {
                         Slider(
                             value = settings.blurLevel.toFloat(),
@@ -1714,6 +1737,16 @@ private val SwitchColors
         uncheckedThumbColor = TextMuted,
         uncheckedTrackColor = Color.Black,
         uncheckedBorderColor = TextMuted,
+    )
+
+private val SegmentedColors
+    @Composable get() = SegmentedButtonDefaults.colors(
+        activeContainerColor = TextPrimary,
+        activeContentColor = Color.Black,
+        activeBorderColor = TextPrimary,
+        inactiveContainerColor = Color.Transparent,
+        inactiveContentColor = TextSecondary,
+        inactiveBorderColor = TextMuted,
     )
 
 private val SliderColors
