@@ -256,6 +256,8 @@ class MainActivity : ComponentActivity() {
     private var settingsOpen by mutableStateOf(false)
     private var guideOpen by mutableStateOf(false)
     private var accessOpen by mutableStateOf(false)
+    private var logOpen by mutableStateOf(false)
+    private var loggedGestures: GestureState? = null // last state written to the log, so only changes are noted
     private var access by mutableStateOf(emptyList<Access>()) // re-read on every resume, so it follows the system settings
     private var tour by mutableStateOf(false) // the first-run highlights
     private val spots = mutableStateMapOf<String, Rect>() // where home's parts are, for the highlights
@@ -354,6 +356,7 @@ class MainActivity : ComponentActivity() {
                             onPermissions = { accessOpen = true },
                             onSource = { launch(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/ibnurizqiaramadan/polos-launcher-android"))) },
                             onGuide = { guideOpen = true },
+                            onLog = { logOpen = true },
                             onBack = ::closeSettings,
                         )
                     }
@@ -374,6 +377,13 @@ class MainActivity : ComponentActivity() {
                         exit = slideOutHorizontally(tween(180, easing = EaseInCubic)) { it / 10 } + fadeOut(tween(180)),
                     ) {
                         AccessPage(access, onAppInfo = ::openAppInfo, onBack = { accessOpen = false })
+                    }
+                    AnimatedVisibility(
+                        visible = logOpen,
+                        enter = slideInHorizontally(tween(250, easing = EaseOutCubic)) { it / 10 } + fadeIn(tween(250)),
+                        exit = slideOutHorizontally(tween(180, easing = EaseInCubic)) { it / 10 } + fadeOut(tween(180)),
+                    ) {
+                        LogPage(onBack = { logOpen = false })
                     }
                     if (tour) TourOverlay(spots, onDone = ::endTour)
                     renaming?.let { app ->
@@ -422,6 +432,10 @@ class MainActivity : ComponentActivity() {
         refreshHints()
         refreshWeather()
         gestures = gestureState()
+        if (gestures != loggedGestures) {
+            ServiceLog.add(this, "launcher resumed, gestures ${gestures.name.lowercase()}" + if (gestures == GestureState.Broken) " (enabled but Android has it stopped)" else "")
+            loggedGestures = gestures
+        }
         refreshAccess()
         nextAlarm = nextClockAlarm()
         if (granted(CALENDAR)) {
@@ -651,6 +665,7 @@ class MainActivity : ComponentActivity() {
     private fun closeSettings() {
         guideOpen = false
         accessOpen = false
+        logOpen = false
         if (!settingsOpen) return
         settingsOpen = false
         refreshHints()
@@ -1696,6 +1711,7 @@ private fun SettingsPage(
     onPermissions: () -> Unit,
     onSource: () -> Unit,
     onGuide: () -> Unit,
+    onLog: () -> Unit,
     onBack: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
@@ -1807,6 +1823,7 @@ private fun SettingsPage(
                 ),
                 settings.doubleTapLock.row("Double-tap to lock", if (gestures == GestureState.On) "Double-tap an empty spot on home" else "Needs navigation gestures on"),
                 settings.swipeDown.row("Swipe down for notifications"),
+                SettingRow("Service log", "When the gesture service connected or stopped, and why Android stopped the app", onClick = onLog),
             ),
         )
         SettingGroup(

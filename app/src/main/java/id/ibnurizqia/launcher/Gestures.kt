@@ -45,12 +45,18 @@ class GestureService : AccessibilityService() {
          * Switches the service off, as if toggled in Accessibility settings; turning it back on has to happen
          * there. For banking apps that refuse to run while any accessibility service is on. False if it's off already.
          */
-        fun stop(): Boolean = running?.let { it.disableSelf(); true } ?: false
+        fun stop(): Boolean = running?.let { ServiceLog.add(it, "switched off from Polos settings"); it.disableSelf(); true } ?: false
     }
 
     override fun onServiceConnected() {
         running = this
         addZones()
+        ServiceLog.add(this, "gesture service connected")
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        ServiceLog.add(this, "gesture service unbound by the system")
+        return super.onUnbind(intent)
     }
 
     // strip sizes depend on screen size, so rebuild them on rotation
@@ -61,6 +67,7 @@ class GestureService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        ServiceLog.add(this, "gesture service destroyed")
         running = null
         removeZones()
         super.onDestroy()
