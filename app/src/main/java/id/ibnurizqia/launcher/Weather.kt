@@ -43,6 +43,8 @@ private suspend fun Context.placeName(location: Location): String? = withContext
     runCatching { Geocoder(this@placeName).getFromLocation(location.latitude, location.longitude, 1) }
         .getOrNull()?.firstOrNull()
         ?.let { it.locality ?: it.subAdminArea ?: it.adminArea }
+        // Indonesian geocoding prefixes the district type; it costs a lot of width and says nothing about where
+        ?.removePrefix("Kecamatan ")?.removePrefix("Kabupaten ")?.removePrefix("Kota ")
 }
 
 @SuppressLint("MissingPermission") // checked by caller

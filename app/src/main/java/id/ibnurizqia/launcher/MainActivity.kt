@@ -714,8 +714,9 @@ class MainActivity : ComponentActivity() {
                 Spacer(Modifier.height(4.dp))
                 Row {
                     weather?.takeIf { settings.weather.on }?.let { w ->
-                        // the place makes it clear which area this is for; tapping opens that area's forecast
-                        InfoText(listOfNotNull(w.summary, w.place).joinToString(", ")) {
+                        // the place makes it clear which area this is for; tapping opens that area's forecast.
+                        // Long names give way (ellipsis) so the battery figure never wraps onto a second line.
+                        InfoText(listOfNotNull(w.summary, w.place).joinToString(", "), Modifier.weight(1f, fill = false)) {
                             launch(Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, listOfNotNull("weather", w.place).joinToString(" ")))
                         }
                         if (settings.battery.on) InfoText("·")
@@ -940,11 +941,13 @@ private fun TextClock(formatPattern: String, sizeSp: Float, light: Boolean = fal
 )
 
 @Composable
-private fun InfoText(text: String, onClick: (() -> Unit)? = null) = Text(
+private fun InfoText(text: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) = Text(
     text = text,
     color = TextSecondary,
     fontSize = 16.sp,
-    modifier = (if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = 6.dp, vertical = 4.dp),
+    maxLines = 1,
+    overflow = TextOverflow.Ellipsis,
+    modifier = modifier.then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = 6.dp, vertical = 4.dp),
 )
 
 // "14:00" today, "Tue 09:00" otherwise
