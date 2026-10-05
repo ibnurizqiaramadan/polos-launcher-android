@@ -1,17 +1,37 @@
 package id.ibnurizqia.launcher
 
+import android.util.LruCache
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.CacheDrawScope
-import androidx.compose.ui.draw.DrawResult
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PointMode
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.PI
 import kotlin.math.ceil
 import kotlin.math.cos
@@ -38,17 +58,47 @@ private val DotInk = Color(0xFF333333) // dots are tiny, so they can be a touch 
 private val StarInks = listOf(Color(0xFF262626), Color(0xFF3A3A3A), Color(0xFF5A5A5A)) // faint, dim, the odd bright one
 
 /**
- * Draws [wallpaper] behind the content. Pattern sizes are in dp times [scale] (thumbnails pass < 1 to show
- * more of it); placement is relative to the size, so a thumbnail reads like a small copy of the screen.
- * Geometry is built once per size; a redraw just replays it.
- * ponytail: paths re-rasterise whenever the screen redraws (no measurable cost on the emulator); if drawer
- * scrolling ever janks on a phone, cache it as a texture with graphicsLayer(compositingStrategy = Offscreen).
+ * [wallpaper] filling this spot. It's drawn once per pattern, size and scale into a bitmap, off the main
+ * thread, and from then on only copied to the screen: the line patterns run to tens of thousands of segments
+ * (Flow, Contours) or dozens of screen-wide fills (Ridges), and drawing those as paths on every frame made
+ * the drawer, scrolling and every animation over them stutter. Until the bitmap is ready the spot stays
+ * black and it fades in. Pattern sizes are in dp times [scale] (thumbnails pass < 1 to show more of it);
+ * placement is relative to the size, so a thumbnail reads like a small copy of the screen.
  */
-fun Modifier.wallpaper(wallpaper: Wallpaper, scale: Float = 1f) = drawWithCache {
-    val u = density * scale
+@Composable
+fun WallpaperImage(wallpaper: Wallpaper, modifier: Modifier = Modifier, scale: Float = 1f) = BoxWithConstraints(modifier) {
+    if (wallpaper == Wallpaper.Black || !constraints.hasBoundedWidth || !constraints.hasBoundedHeight) return@BoxWithConstraints
+    val key = WallpaperKey(wallpaper, constraints.maxWidth, constraints.maxHeight, LocalDensity.current.density * scale)
+    // a cached picture shows on the very first frame (e.g. the settings page reusing home's), so no fade
+    var picture by remember(key) { mutableStateOf(pictures.get(key)) }
+    LaunchedEffect(key) { if (picture == null) picture = withContext(Dispatchers.Default) { render(key) } }
+    val alpha by animateFloatAsState(if (picture != null) 1f else 0f, tween(300), label = "wallpaper")
+    picture?.let { Canvas(Modifier.fillMaxSize()) { drawImage(it, alpha = alpha) } }
+}
+
+private data class WallpaperKey(val wallpaper: Wallpaper, val width: Int, val height: Int, val unit: Float)
+
+// a full-screen picture is ~13 MB (1220 x 2712 x 4): room for home's, the one it fades from, and the thumbnails
+private val pictures = object : LruCache<WallpaperKey, ImageBitmap>(48 * 1024 * 1024) {
+    override fun sizeOf(key: WallpaperKey, value: ImageBitmap) = value.width * value.height * 4
+}
+
+private fun render(key: WallpaperKey): ImageBitmap {
+    pictures.get(key)?.let { return it }
+    val bitmap = ImageBitmap(key.width, key.height)
+    val size = Size(key.width.toFloat(), key.height.toFloat())
+    CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, Canvas(bitmap), size) { drawPattern(key.wallpaper, key.unit) }
+    bitmap.asAndroidBitmap().prepareToDraw() // starts the GPU upload before the first frame needs it
+    pictures.put(key, bitmap)
+    return bitmap
+}
+
+// u = pixels per dp of pattern size
+private fun DrawScope.drawPattern(wallpaper: Wallpaper, u: Float) {
     val (w, h) = size
+    val stroke = Stroke(width = max(u, 1f))
     when (wallpaper) {
-        Wallpaper.Black -> onDrawBehind {}
+        Wallpaper.Black -> {}
         Wallpaper.Dots -> {
             val gap = 20 * u
             val points = buildList {
@@ -59,7 +109,7 @@ fun Modifier.wallpaper(wallpaper: Wallpaper, scale: Float = 1f) = drawWithCache 
                     y += gap
                 }
             }
-            onDrawBehind { drawPoints(points, PointMode.Points, DotInk, strokeWidth = max(2 * u, 1f), cap = StrokeCap.Round) }
+            drawPoints(points, PointMode.Points, DotInk, strokeWidth = max(2 * u, 1f), cap = StrokeCap.Round)
         }
         Wallpaper.Stars -> {
             // one star per cell at most, scattered; most faint, a few brighter
@@ -71,26 +121,18 @@ fun Modifier.wallpaper(wallpaper: Wallpaper, scale: Float = 1f) = drawWithCache 
                 val shine = hash(i + 7, j + 3)
                 tiers[if (shine < 0.7f) 0 else if (shine < 0.95f) 1 else 2] += star
             }
-            onDrawBehind {
-                tiers.forEachIndexed { t, stars ->
-                    drawPoints(stars, PointMode.Points, StarInks[t], strokeWidth = max((1.5f + t * 0.5f) * u, 1f), cap = StrokeCap.Round)
-                }
+            tiers.forEachIndexed { t, stars ->
+                drawPoints(stars, PointMode.Points, StarInks[t], strokeWidth = max((1.5f + t * 0.5f) * u, 1f), cap = StrokeCap.Round)
             }
         }
         // two faint pools of deep colour fading into black, top right and bottom left
         Wallpaper.Glow -> glow(Color(0xFF0E2236), Color(0xFF1E1030)) // blue, plum
         Wallpaper.Ember -> glow(Color(0xFF2A1206), Color(0xFF2A0710)) // amber, crimson
         Wallpaper.Aurora -> glow(Color(0xFF07261F), Color(0xFF0B1630)) // teal, night blue
-        Wallpaper.Ridges -> {
-            // each ridge fills black below its line first, hiding the ridges behind its peaks
-            val ridges = ridges(w, h, u)
-            val stroke = Stroke(width = max(u, 1f))
-            onDrawBehind {
-                ridges.forEach { (line, fill) ->
-                    drawPath(fill, Color.Black)
-                    drawPath(line, LineInk, style = stroke)
-                }
-            }
+        // each ridge blacks out the space under its line first, hiding the ridges behind its peaks
+        Wallpaper.Ridges -> ridges(w, h, u).forEach { (line, fill) ->
+            drawPath(fill, Color.Black)
+            drawPath(line, LineInk, style = stroke)
         }
         else -> {
             val path = Path()
@@ -109,8 +151,7 @@ fun Modifier.wallpaper(wallpaper: Wallpaper, scale: Float = 1f) = drawWithCache 
                 Wallpaper.Flow -> path.flow(w, h, u)
                 else -> path.mesh(w, h, u)
             }
-            val stroke = Stroke(width = max(u, 1f))
-            onDrawBehind { drawPath(path, LineInk, style = stroke) }
+            drawPath(path, LineInk, style = stroke)
         }
     }
 }
@@ -126,11 +167,10 @@ private fun Path.lines(w: Float, h: Float, u: Float) {
     }
 }
 
-private fun CacheDrawScope.glow(topRight: Color, bottomLeft: Color): DrawResult {
+private fun DrawScope.glow(topRight: Color, bottomLeft: Color) {
     val (w, h) = size
-    val a = Brush.radialGradient(listOf(topRight, Color.Transparent), Offset(w * 0.9f, h * 0.1f), w)
-    val b = Brush.radialGradient(listOf(bottomLeft, Color.Transparent), Offset(w * 0.1f, h * 0.9f), w)
-    return onDrawBehind { drawRect(a); drawRect(b) }
+    drawRect(Brush.radialGradient(listOf(topRight, Color.Transparent), Offset(w * 0.9f, h * 0.1f), w))
+    drawRect(Brush.radialGradient(listOf(bottomLeft, Color.Transparent), Offset(w * 0.1f, h * 0.9f), w))
 }
 
 // hairlines both ways at 45°, making a diamond lattice
@@ -239,7 +279,8 @@ private fun Path.rays(w: Float, h: Float, u: Float) {
 }
 
 // Ridgelines like the "Unknown Pleasures" cover: flat at the edges, noisy peaks in the middle.
-// Each comes with a fill reaching down to the bottom, so a nearer ridge hides what's behind its peaks.
+// Each comes with a fill from its line down to its own baseline, so a nearer ridge hides what's behind its
+// peaks. That's enough: peaks only rise, so every earlier ridge's line lies above this one's baseline.
 private fun ridges(w: Float, h: Float, u: Float): List<Pair<Path, Path>> {
     val gap = 12 * u
     val amp = 46 * u
@@ -259,8 +300,8 @@ private fun ridges(w: Float, h: Float, u: Float): List<Pair<Path, Path>> {
             if (x == 0f) { line.moveTo(x, py); fill.moveTo(x, py) } else { line.lineTo(x, py); fill.lineTo(x, py) }
             x += step
         }
-        fill.lineTo(w + step, h)
-        fill.lineTo(0f, h)
+        fill.lineTo(w + step, y + u) // a dp past the baseline covers the earlier lines' antialiasing
+        fill.lineTo(0f, y + u)
         fill.close()
         ridges += line to fill
         y += gap

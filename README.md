@@ -31,7 +31,7 @@ Package: `id.ibnurizqia.launcher`. Android 8.0 (API 26) ke atas.
 - Gesture navigasi untuk HP yang memaksa 3 tombol (misalnya HyperOS dengan launcher pihak ketiga): swipe dari tepi kiri/kanan = Back, swipe up dari bawah tengah = Home, swipe up lalu tahan = Recents. Lewat layanan Accessibility yang hanya memasang strip sentuh tipis di tepi layar; tidak membaca isi layar. Opsional: beberapa app bank (misalnya BCA) menolak jalan selama ada layanan Accessibility yang aktif, jadi dari Settings launcher gesture ini bisa dimatikan dengan satu tap; menyalakan lagi lewat Settings sistem. Kalau Android menandainya "Tidak berfungsi" (setelah update, atau saat HyperOS mematikan prosesnya), launcher menampilkannya sebagai *Not working* di Settings dan hint *fix gestures* di home; perbaikannya matikan lalu nyalakan lagi di Aksesibilitas. Di HyperOS, set Battery saver Polos ke *No restrictions* supaya jarang terjadi. Settings → Gestures → **Service log** mencatat kapan layanan tersambung/diputus dan alasan Android mematikan prosesnya (bisa dibagikan)
 
 ### Wallpaper
-20 wallpaper yang digambar langsung dengan Compose Canvas, bukan gambar, jadi tajam di resolusi apa pun dan APK tetap kecil. Semua berlatar hitam dengan garis redup (#262626) supaya teks tetap kontras:
+20 wallpaper yang digambar sendiri oleh launcher, bukan file gambar, jadi tajam di resolusi apa pun dan APK tetap kecil. Tiap pola digambar sekali (di thread latar) ke bitmap seukuran layar lalu disimpan, jadi animasi dan scroll di atasnya tetap ringan. Semua berlatar hitam dengan garis redup (#262626) supaya teks tetap kontras:
 - Garis: Lines, Diamonds, Grid, Chevron, Hexagons, Spiral, Rays, Waves, Rings
 - Abstrak: Contours (garis kontur), Ridges (ala sampul *Unknown Pleasures*), Flow (garis arus), Arcs (ubin Truchet), Mesh (segitiga), Dots, Stars
 - Glow: Glow, Ember, Aurora, pendar warna gelap tanpa garis
@@ -96,7 +96,7 @@ app/src/main/
 │   ├── Tour.kt                  tur sorotan saat pertama kali dibuka dan halaman How to use
 │   ├── Diagnostics.kt           log layanan gesture dan alasan proses dimatikan (halaman Service log)
 │   ├── LauncherSettings.kt      semua pengaturan: pilihan wallpaper dan toggle, tersimpan ke SharedPreferences
-│   ├── Wallpaper.kt             20 wallpaper yang digambar dengan Canvas (path, titik, gradien)
+│   ├── Wallpaper.kt             20 wallpaper (path, titik, gradien), digambar sekali ke bitmap yang di-cache
 │   ├── Gestures.kt              GestureService (Accessibility): strip tepi untuk Back/Home/Recents, kunci layar
 │   ├── NowPlaying.kt            MediaListener dan MediaWatcher untuk now playing, plus ikon transport
 │   ├── Weather.kt               lokasi, Geocoder, dan permintaan ke Open-Meteo

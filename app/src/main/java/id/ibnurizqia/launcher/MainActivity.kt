@@ -312,7 +312,7 @@ class MainActivity : ComponentActivity() {
                                 drawRect(Color.Black, alpha = drawer * dim)
                             }
                     ) {
-                        Crossfade(settings.wallpaper, animationSpec = tween(300), label = "wallpaper") { Box(Modifier.fillMaxSize().wallpaper(it)) }
+                        Crossfade(settings.wallpaper, animationSpec = tween(300), label = "wallpaper") { WallpaperImage(it, Modifier.fillMaxSize()) }
                         Box(Modifier.graphicsLayer { alpha = if (behind == DrawerBackground.Wallpaper) 1f - drawer else 1f }) { HomeScreen(menu) }
                     }
                     AnimatedVisibility(
@@ -1721,138 +1721,140 @@ private fun SettingsPage(
     val context = LocalContext.current
     val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() }
     val canBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .wallpaper(settings.wallpaper)
-            .safeDrawingPadding() // outside the scroll, so rows stop at the status bar instead of sliding under it
-            .verticalScroll(rememberScrollState())
-            .padding(start = 16.dp, end = 16.dp, bottom = 24.dp)
-    ) {
-        Row(Modifier.height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
-            Spacer(Modifier.width(4.dp))
-            Text("Settings", fontSize = 22.sp)
-        }
-        SectionTitle("Wallpaper")
+    // the page sits on the chosen wallpaper (the same picture as home's, so it's ready) and the rows scroll over it
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        WallpaperImage(settings.wallpaper, Modifier.fillMaxSize())
         Column(
             Modifier
-                .clip(RoundedCornerShape(SegmentOuter))
-                .background(SurfaceRaised)
-                .padding(16.dp)
-                .selectableGroup(),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .fillMaxSize()
+                .safeDrawingPadding() // outside the scroll, so rows stop at the status bar instead of sliding under it
+                .verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, bottom = 24.dp)
         ) {
-            Text("Drawn by the launcher and kept mostly black, so AMOLED pixels stay off.", fontSize = 14.sp, color = TextMuted)
-            Wallpaper.entries.chunked(4).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    row.forEach { WallpaperTile(it, selected = it == settings.wallpaper, Modifier.weight(1f)) { settings.pick(it) } }
+            Row(Modifier.height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+                Spacer(Modifier.width(4.dp))
+                Text("Settings", fontSize = 22.sp)
+            }
+            SectionTitle("Wallpaper")
+            Column(
+                Modifier
+                    .clip(RoundedCornerShape(SegmentOuter))
+                    .background(SurfaceRaised)
+                    .padding(16.dp)
+                    .selectableGroup(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("Drawn by the launcher and kept mostly black, so AMOLED pixels stay off.", fontSize = 14.sp, color = TextMuted)
+                Wallpaper.entries.chunked(4).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        row.forEach { WallpaperTile(it, selected = it == settings.wallpaper, Modifier.weight(1f)) { settings.pick(it) } }
+                    }
                 }
             }
-        }
-        SettingGroup(
-            "Home screen",
-            listOf(
-                settings.weather.row("Weather", "Conditions under the date, plus today's high, low and rain"),
-                settings.battery.row("Battery percentage"),
-                settings.music.row("Now playing", "Song and controls while music plays"),
-                settings.events.row("Calendar events", "All-day events and the next one coming up"),
-                settings.alarm.row("Next alarm"),
-                settings.device.row("Device stats", "RAM, CPU speed and battery current"),
-                settings.screenTime.row("Screen time"),
-                settings.shortcuts.row("Phone and Camera", "Shortcuts in the bottom corners"),
-                settings.hints.row("Setup hints", "The \"Show:\" line for features that still need access"),
-            ),
-        )
-        SettingGroup(
-            "App drawer",
-            listOf(
-                SettingRow(
-                    "Background",
-                    when (settings.drawerBackground) {
-                        DrawerBackground.Home -> if (canBlur) "The home screen, blurred and dimmed" else "Blur needs Android 12; shows black instead"
-                        DrawerBackground.Wallpaper -> "Only the wallpaper; the home screen's text hides"
-                        DrawerBackground.Black -> "Plain black, the easiest on an AMOLED battery"
-                    },
-                ) {
-                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                        DrawerBackground.entries.forEachIndexed { i, option ->
-                            SegmentedButton(
-                                selected = option == settings.drawerBackground,
-                                onClick = { settings.pick(option) },
-                                shape = SegmentedButtonDefaults.itemShape(i, DrawerBackground.entries.size),
-                                colors = SegmentedColors,
-                            ) { Text(option.name, fontSize = 14.sp) }
+            SettingGroup(
+                "Home screen",
+                listOf(
+                    settings.weather.row("Weather", "Conditions under the date, plus today's high, low and rain"),
+                    settings.battery.row("Battery percentage"),
+                    settings.music.row("Now playing", "Song and controls while music plays"),
+                    settings.events.row("Calendar events", "All-day events and the next one coming up"),
+                    settings.alarm.row("Next alarm"),
+                    settings.device.row("Device stats", "RAM, CPU speed and battery current"),
+                    settings.screenTime.row("Screen time"),
+                    settings.shortcuts.row("Phone and Camera", "Shortcuts in the bottom corners"),
+                    settings.hints.row("Setup hints", "The \"Show:\" line for features that still need access"),
+                ),
+            )
+            SettingGroup(
+                "App drawer",
+                listOf(
+                    SettingRow(
+                        "Background",
+                        when (settings.drawerBackground) {
+                            DrawerBackground.Home -> if (canBlur) "The home screen, blurred and dimmed" else "Blur needs Android 12; shows black instead"
+                            DrawerBackground.Wallpaper -> "Only the wallpaper; the home screen's text hides"
+                            DrawerBackground.Black -> "Plain black, the easiest on an AMOLED battery"
+                        },
+                    ) {
+                        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                            DrawerBackground.entries.forEachIndexed { i, option ->
+                                SegmentedButton(
+                                    selected = option == settings.drawerBackground,
+                                    onClick = { settings.pick(option) },
+                                    shape = SegmentedButtonDefaults.itemShape(i, DrawerBackground.entries.size),
+                                    colors = SegmentedColors,
+                                ) { Text(option.name, fontSize = 14.sp) }
+                            }
                         }
-                    }
-                },
-                // not for Black: a strength for nothing would just be noise. Wallpaper can go down to off (crisp).
-                if (canBlur && settings.drawerBackground != DrawerBackground.Black) {
-                    val home = settings.drawerBackground == DrawerBackground.Home
-                    val level = if (home) settings.homeBlur else settings.wallpaperBlur
-                    val min = if (home) 1 else 0
-                    SettingRow("Blur level", value = if (level.value == 0) "Off" else "${level.value}") {
-                        Slider(
-                            value = level.value.toFloat(),
-                            onValueChange = { level.set(it.roundToInt()) },
-                            valueRange = min.toFloat()..10f,
-                            steps = 10 - min - 1, // the stops strictly between the ends
-                            colors = SliderColors,
-                            modifier = Modifier.semantics { contentDescription = "Blur level" },
-                        )
-                    }
-                } else {
-                    null
-                },
-                settings.recent.row("Recent apps", "Up to 10, above the search field; swipe sideways for more"),
-                settings.index.row("Alphabet index", "Letters along the right edge to jump through the list"),
-                settings.keyboard.row("Open keyboard right away", "Otherwise it waits until you tap search"),
-            ).filterNotNull(),
-        )
-        SettingGroup(
-            "Gestures",
-            listOf(
-                SettingRow(
-                    "Navigation gestures",
-                    when (gestures) {
-                        GestureState.On -> "Tap to turn off, e.g. before a banking app that refuses to run while an accessibility service is on"
-                        GestureState.Off -> "Optional, for phones that force 3-button navigation (HyperOS): swipe in from the edges for Back, Home and Recents"
-                        GestureState.Broken -> "Android stopped it, as happens after an update or when the system kills the app. Tap to turn it off and on again"
                     },
-                    value = when (gestures) { GestureState.On -> "On"; GestureState.Off -> "Off"; GestureState.Broken -> "Not working" },
-                    emphasised = gestures == GestureState.Broken,
-                    onClick = onGestures,
+                    // not for Black: a strength for nothing would just be noise. Wallpaper can go down to off (crisp).
+                    if (canBlur && settings.drawerBackground != DrawerBackground.Black) {
+                        val home = settings.drawerBackground == DrawerBackground.Home
+                        val level = if (home) settings.homeBlur else settings.wallpaperBlur
+                        val min = if (home) 1 else 0
+                        SettingRow("Blur level", value = if (level.value == 0) "Off" else "${level.value}") {
+                            Slider(
+                                value = level.value.toFloat(),
+                                onValueChange = { level.set(it.roundToInt()) },
+                                valueRange = min.toFloat()..10f,
+                                steps = 10 - min - 1, // the stops strictly between the ends
+                                colors = SliderColors,
+                                modifier = Modifier.semantics { contentDescription = "Blur level" },
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                    settings.recent.row("Recent apps", "Up to 10, above the search field; swipe sideways for more"),
+                    settings.index.row("Alphabet index", "Letters along the right edge to jump through the list"),
+                    settings.keyboard.row("Open keyboard right away", "Otherwise it waits until you tap search"),
+                ).filterNotNull(),
+            )
+            SettingGroup(
+                "Gestures",
+                listOf(
+                    SettingRow(
+                        "Navigation gestures",
+                        when (gestures) {
+                            GestureState.On -> "Tap to turn off, e.g. before a banking app that refuses to run while an accessibility service is on"
+                            GestureState.Off -> "Optional, for phones that force 3-button navigation (HyperOS): swipe in from the edges for Back, Home and Recents"
+                            GestureState.Broken -> "Android stopped it, as happens after an update or when the system kills the app. Tap to turn it off and on again"
+                        },
+                        value = when (gestures) { GestureState.On -> "On"; GestureState.Off -> "Off"; GestureState.Broken -> "Not working" },
+                        emphasised = gestures == GestureState.Broken,
+                        onClick = onGestures,
+                    ),
+                    settings.doubleTapLock.row("Double-tap to lock", if (gestures == GestureState.On) "Double-tap an empty spot on home" else "Needs navigation gestures on"),
+                    settings.swipeDown.row("Swipe down for notifications"),
+                    SettingRow("Service log", "When the gesture service connected or stopped, and why Android stopped the app", onClick = onLog),
                 ),
-                settings.doubleTapLock.row("Double-tap to lock", if (gestures == GestureState.On) "Double-tap an empty spot on home" else "Needs navigation gestures on"),
-                settings.swipeDown.row("Swipe down for notifications"),
-                SettingRow("Service log", "When the gesture service connected or stopped, and why Android stopped the app", onClick = onLog),
-            ),
-        )
-        SettingGroup(
-            "Launcher",
-            listOf(
-                SettingRow("Default home app", "Choose which launcher the Home button opens", onClick = onDefaultHome),
-                SettingRow(
-                    "Permissions",
-                    "Location, calendar, usage, notifications, accessibility",
-                    value = access.count { it.granted }.let { if (it == access.size) "All granted" else "$it of ${access.size} granted" },
-                    onClick = onPermissions,
+            )
+            SettingGroup(
+                "Launcher",
+                listOf(
+                    SettingRow("Default home app", "Choose which launcher the Home button opens", onClick = onDefaultHome),
+                    SettingRow(
+                        "Permissions",
+                        "Location, calendar, usage, notifications, accessibility",
+                        value = access.count { it.granted }.let { if (it == access.size) "All granted" else "$it of ${access.size} granted" },
+                        onClick = onPermissions,
+                    ),
+                    SettingRow("How to use", "Every gesture and tap, and the first-start highlights again", onClick = onGuide),
                 ),
-                SettingRow("How to use", "Every gesture and tap, and the first-start highlights again", onClick = onGuide),
-            ),
-        )
-        // tap opens the source: the launcher asks for Accessibility and notification access, so it should be checkable
-        Text(
-            "Polos ${version ?: ""}  ·  by xyrus10",
-            fontSize = 14.sp,
-            color = TextMuted,
-            modifier = Modifier
-                .padding(top = 16.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onSource)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-        )
+            )
+            // tap opens the source: the launcher asks for Accessibility and notification access, so it should be checkable
+            Text(
+                "Polos ${version ?: ""}  ·  by xyrus10",
+                fontSize = 14.sp,
+                color = TextMuted,
+                modifier = Modifier
+                    .padding(top = 16.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onSource)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
     }
 }
 
@@ -1974,9 +1976,9 @@ private fun WallpaperTile(wallpaper: Wallpaper, selected: Boolean, modifier: Mod
                 .aspectRatio(3 / 4f)
                 .clip(shape)
                 .background(Color.Black)
-                .wallpaper(wallpaper, scale = 0.5f)
-                .then(if (selected) Modifier.border(2.dp, TextPrimary, shape) else Modifier)
+                .then(if (selected) Modifier.border(2.dp, TextPrimary, shape) else Modifier) // drawn over the picture
         ) {
+            WallpaperImage(wallpaper, Modifier.matchParentSize(), scale = 0.5f)
             if (selected) {
                 Icon(
                     Icons.Filled.Check,
