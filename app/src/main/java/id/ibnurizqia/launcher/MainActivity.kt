@@ -14,6 +14,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.LauncherActivityInfo
 import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
+import android.content.pm.ShortcutInfo
 import android.graphics.Color.TRANSPARENT
 import android.graphics.Typeface
 import android.net.Uri
@@ -877,7 +878,12 @@ class MainActivity : ComponentActivity() {
     private fun Menu(app: App, close: () -> Unit) {
         val favorite = app.key in favorites
         val isHidden = app.key in hidden
+        val shortcuts = remember(app.key) { shortcutsFor(app) }
         MenuHeader(app)
+        // the app's own shortcuts first, as on the stock launcher; no icons, since theirs come in full colour
+        if (shortcuts.isNotEmpty()) {
+            MenuGroup(close, shortcuts.map { shortcut -> MenuAction(null, (shortcut.shortLabel ?: shortcut.longLabel).toString()) { startShortcut(shortcut) } })
+        }
         MenuGroup(
             close,
             listOfNotNull(
@@ -897,6 +903,27 @@ class MainActivity : ComponentActivity() {
                 MenuAction(Icons.Filled.Delete, "Uninstall", destructive = true) { uninstall(app) }.takeIf { removable },
             ),
         )
+    }
+
+    // up to four, the app's static ones before its dynamic ones, each in the app's own order.
+    // Only the default home app may ask (hasShortcutHostPermission), which Polos is whenever this menu shows.
+    private fun shortcutsFor(app: App): List<ShortcutInfo> {
+        if (!launcherApps.hasShortcutHostPermission()) return emptyList()
+        val query = LauncherApps.ShortcutQuery()
+            .setPackage(app.info.componentName.packageName)
+            .setActivity(app.info.componentName)
+            .setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_MANIFEST or LauncherApps.ShortcutQuery.FLAG_MATCH_DYNAMIC)
+        return runCatching { launcherApps.getShortcuts(query, app.info.user) }.getOrNull().orEmpty()
+            .filter { it.isEnabled && !(it.shortLabel ?: it.longLabel).isNullOrBlank() }
+            .sortedWith(compareBy({ it.isDynamic }, { it.rank }))
+            .take(4)
+    }
+
+    private fun startShortcut(shortcut: ShortcutInfo) {
+        // the app may have dropped it since the menu opened, or the profile may be locked
+        runCatching { launcherApps.startShortcut(shortcut, null, null) }
+            .onFailure { Toast.makeText(this, "That shortcut isn't available", Toast.LENGTH_SHORT).show() }
+        drawerOpen = false
     }
 
     private fun uninstall(app: App) = launch(Intent(Intent.ACTION_DELETE, Uri.fromParts("package", app.info.componentName.packageName, null)))
@@ -1548,7 +1575,7 @@ private fun FingerMenu(onDismiss: () -> Unit, content: @Composable () -> Unit) {
     }
 }
 
-class MenuAction(val icon: ImageVector, val label: String, val destructive: Boolean = false, val onClick: () -> Unit)
+class MenuAction(val icon: ImageVector?, val label: String, val destructive: Boolean = false, val onClick: () -> Unit)
 
 // which app this is about: the name, and the package that tells twins apart
 @Composable
@@ -1576,7 +1603,9 @@ private fun MenuGroup(close: () -> Unit, actions: List<MenuAction>) = Column(ver
                 .padding(horizontal = 20.dp, vertical = 14.dp), // ~50dp tall rows
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(action.icon, contentDescription = null, tint = if (action.destructive) Danger else TextSecondary, modifier = Modifier.size(20.dp))
+            // without an icon the space stays, so every label in the menu starts at the same line
+            action.icon?.let { Icon(it, contentDescription = null, tint = if (action.destructive) Danger else TextSecondary, modifier = Modifier.size(20.dp)) }
+                ?: Spacer(Modifier.size(20.dp))
             Spacer(Modifier.width(16.dp))
             Text(action.label, fontSize = 15.sp, color = if (action.destructive) Danger else Color.Unspecified)
         }
