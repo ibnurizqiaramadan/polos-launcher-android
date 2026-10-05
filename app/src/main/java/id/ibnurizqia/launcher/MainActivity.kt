@@ -10,6 +10,7 @@ import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ApplicationInfo
 import android.content.pm.LauncherActivityInfo
 import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
@@ -104,6 +105,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
@@ -224,6 +226,7 @@ internal val TextSecondary = Color(0xFFBDBDBD) // 11:1
 internal val TextMuted = Color(0xFF8C8C8C) // 6.2:1
 internal val SurfaceDim = Color(0xFF121212) // barely-lit fill for the search field
 internal val SurfaceRaised = Color(0xFF1F1F1F) // menu segments: lifted just enough off pure black
+private val Danger = Color(0xFFF28B82) // destructive actions; soft red, 6.9:1 on the menu segments
 
 /** Long-press menu content for one app; call `close` to dismiss it. */
 private typealias AppMenu = @Composable (app: App, close: () -> Unit) -> Unit
@@ -873,13 +876,24 @@ class MainActivity : ComponentActivity() {
             close,
             listOfNotNull(
                 MenuAction(Icons.Filled.Home, if (favorite) "Remove from home" else "Add to home") { toggleFavorite(app) }
-                    .takeIf { favorite || favorites.size < MAX_FAVORITES },
+                    // favorites whose app is gone keep their spot (they come back on reinstall) but don't count
+                    .takeIf { favorite || favorites.count { key -> apps.any { it.key == key } } < MAX_FAVORITES },
                 MenuAction(Icons.Filled.Edit, "Rename") { renaming = app },
                 MenuAction(if (isHidden) VisibilityIcon else VisibilityOffIcon, if (isHidden) "Unhide" else "Hide") { toggleHidden(app) },
             ),
         )
-        MenuGroup(close, listOf(MenuAction(Icons.Filled.Info, "App info") { openInfo(app) }))
+        // apart from the everyday actions; the system asks before it removes anything
+        val removable = app.info.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM == 0
+        MenuGroup(
+            close,
+            listOfNotNull(
+                MenuAction(Icons.Filled.Info, "App info") { openInfo(app) },
+                MenuAction(Icons.Filled.Delete, "Uninstall", destructive = true) { uninstall(app) }.takeIf { removable },
+            ),
+        )
     }
+
+    private fun uninstall(app: App) = launch(Intent(Intent.ACTION_DELETE, Uri.fromParts("package", app.info.componentName.packageName, null)))
 
     private fun toggleFavorite(app: App) {
         favorites = if (app.key in favorites) favorites - app.key else favorites + app.key
@@ -1516,7 +1530,7 @@ private fun FingerMenu(onDismiss: () -> Unit, content: @Composable () -> Unit) {
     }
 }
 
-class MenuAction(val icon: ImageVector, val label: String, val onClick: () -> Unit)
+class MenuAction(val icon: ImageVector, val label: String, val destructive: Boolean = false, val onClick: () -> Unit)
 
 // which app this is about: the name, and the package that tells twins apart
 @Composable
@@ -1544,9 +1558,9 @@ private fun MenuGroup(close: () -> Unit, actions: List<MenuAction>) = Column(ver
                 .padding(horizontal = 20.dp, vertical = 14.dp), // ~50dp tall rows
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(action.icon, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(20.dp))
+            Icon(action.icon, contentDescription = null, tint = if (action.destructive) Danger else TextSecondary, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(16.dp))
-            Text(action.label, fontSize = 15.sp)
+            Text(action.label, fontSize = 15.sp, color = if (action.destructive) Danger else Color.Unspecified)
         }
     }
 }

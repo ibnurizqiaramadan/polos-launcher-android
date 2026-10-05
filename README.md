@@ -55,7 +55,7 @@ Elemen yang dimatikan juga berhenti mengambil data: Device mati berarti tidak ad
 ## Cara pakai
 - **Swipe up** di home: buka app drawer. **Swipe down**: panel notifikasi
 - **Tap jam** = alarm, **tap tanggal** = kalender, **tap cuaca** = prakiraan, **tap baterai** = detail baterai, **tap acara** = buka acaranya
-- **Tahan app**: Add to home / Rename / Hide / App info
+- **Tahan app**: Add to home / Rename / Hide / App info / Uninstall (Uninstall hanya untuk app yang bukan bawaan sistem)
 - **Tahan favorit lalu geser** ke atas atau bawah: ubah urutan. Tahan tanpa geser tetap membuka menu
 - **Tahan area kosong** di home: Settings
 - **Geser di huruf** sisi kanan drawer: lompat ke huruf itu; huruf redup berarti tidak ada app dengan awalan itu
