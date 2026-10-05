@@ -113,6 +113,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -1569,8 +1570,10 @@ private fun FingerMenu(onDismiss: () -> Unit, content: @Composable () -> Unit) {
                     alpha = appear.value.coerceIn(0f, 1f)
                 }
                 .width(IntrinsicSize.Max)
-                .widthIn(min = 232.dp, max = 288.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .widthIn(min = 232.dp, max = 288.dp)
+                // one card, no gaps: lines between the parts instead
+                .clip(RoundedCornerShape(SegmentOuter))
+                .background(SurfaceRaised),
         ) { content() }
     }
 }
@@ -1582,23 +1585,22 @@ class MenuAction(val icon: ImageVector?, val label: String, val destructive: Boo
 private fun MenuHeader(app: App) = Column(
     Modifier
         .fillMaxWidth()
-        .clip(RoundedCornerShape(SegmentOuter))
-        .background(SurfaceRaised)
         .padding(horizontal = 20.dp, vertical = 14.dp)
 ) {
     Text(app.label, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     Text(app.info.componentName.packageName, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
-// connected segments: 2dp apart, big outer corners, small inner ones (the Android 16 grouped-list look)
+// a full-width line above each group (every group follows the header), a shorter one between its rows,
+// starting where the labels do
 @Composable
-private fun MenuGroup(close: () -> Unit, actions: List<MenuAction>) = Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+private fun MenuGroup(close: () -> Unit, actions: List<MenuAction>) = Column {
+    MenuLine()
     actions.forEachIndexed { i, action ->
+        if (i > 0) MenuLine(Modifier.padding(start = 56.dp))
         Row(
             Modifier
                 .fillMaxWidth()
-                .clip(segmentShape(first = i == 0, last = i == actions.lastIndex))
-                .background(SurfaceRaised)
                 .clickable { close(); action.onClick() }
                 .padding(horizontal = 20.dp, vertical = 14.dp), // ~50dp tall rows
             verticalAlignment = Alignment.CenterVertically,
@@ -1611,6 +1613,9 @@ private fun MenuGroup(close: () -> Unit, actions: List<MenuAction>) = Column(ver
         }
     }
 }
+
+@Composable
+private fun MenuLine(modifier: Modifier = Modifier) = HorizontalDivider(modifier, thickness = 1.dp, color = Color(0xFF2E2E2E))
 
 internal val SegmentOuter = 20.dp
 internal val SegmentInner = 4.dp
