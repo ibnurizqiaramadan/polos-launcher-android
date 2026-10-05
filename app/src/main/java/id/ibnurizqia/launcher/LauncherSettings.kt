@@ -31,6 +31,7 @@ class LauncherSettings(private val prefs: SharedPreferences) {
     val weather = Option("show:weather", true)
     val battery = Option("show:battery", true)
     val music = Option("show:music", true)
+    val dots = Option("show:dots", true)
     val events = Option("show:events", true)
     val alarm = Option("show:alarm", true)
     val device = Option("show:device", true)

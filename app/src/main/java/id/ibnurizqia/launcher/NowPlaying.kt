@@ -6,7 +6,9 @@ import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
+import android.app.Notification
 import android.service.notification.NotificationListenerService
+import android.service.notification.StatusBarNotification
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -15,8 +17,40 @@ import androidx.compose.material.icons.materialPath
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.core.app.NotificationManagerCompat
 
-/** Never reads notifications: Android only hands out media sessions to apps with an enabled listener. */
-class MediaListener : NotificationListenerService()
+/** Apps that have notifications worth a dot next to their name, kept up to date by [MediaListener]. */
+object NotificationDots {
+    var packages by mutableStateOf(emptySet<String>())
+        internal set
+}
+
+/**
+ * The notification listener. Android only hands out media sessions to apps with one enabled, which is what
+ * now playing needs; it also notes which apps have notifications, for the dots. It only ever looks at who
+ * posted a notification and what kind it is (ongoing, media, dot allowed), never at what it says.
+ * (Still named for its first job: renaming it would drop the access people have already granted.)
+ */
+class MediaListener : NotificationListenerService() {
+    override fun onListenerConnected() = refresh()
+    override fun onListenerDisconnected() { NotificationDots.packages = emptySet() }
+    override fun onNotificationPosted(sbn: StatusBarNotification?) = refresh()
+    override fun onNotificationRemoved(sbn: StatusBarNotification?) = refresh()
+    override fun onNotificationRankingUpdate(rankingMap: RankingMap?) = refresh()
+
+    // Same rules as the stock launcher's dots: skip ongoing ones (calls, downloads, a music player's controls)
+    // and anything the app or the user switched dots off for.
+    private fun refresh() {
+        val active = runCatching { activeNotifications }.getOrNull() ?: return // not connected (yet)
+        val ranking = Ranking()
+        val rankings = currentRanking
+        NotificationDots.packages = active.filter { sbn ->
+            val n = sbn.notification
+            sbn.packageName != packageName &&
+                n.flags and (Notification.FLAG_ONGOING_EVENT or Notification.FLAG_FOREGROUND_SERVICE) == 0 &&
+                !n.extras.containsKey(Notification.EXTRA_MEDIA_SESSION) &&
+                (rankings?.getRanking(sbn.key, ranking) != true || ranking.canShowBadge())
+        }.mapTo(HashSet()) { it.packageName }
+    }
+}
 
 fun Context.hasNotificationAccess() = packageName in NotificationManagerCompat.getEnabledListenerPackages(this)
 

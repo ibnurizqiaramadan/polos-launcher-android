@@ -1,6 +1,6 @@
 # Polos privacy policy
 
-Last updated: 2 October 2026
+Last updated: 5 October 2026
 
 Polos is a home screen launcher for Android. It does not collect, store or share any personal data. It has no accounts, no analytics, no advertising and no crash reporting. Everything it shows stays on your phone.
 
@@ -19,7 +19,7 @@ All permissions are optional. Polos works without any of them; you only lose the
 - Approximate location: the weather forecast, as described above. The location is not stored.
 - Calendar (read): to show today's events and the next upcoming one on the home screen. Events are read from the phone's calendar provider and are not stored or sent anywhere.
 - Usage access: to show today's screen time and your recently used apps in the app drawer. Usage data is read from the system and is not stored or sent anywhere.
-- Notification access: to show what is currently playing and offer play, pause and skip buttons. Polos uses this only to reach the system's media session API; it does not read the content of your notifications.
+- Notification access: to show what is currently playing and offer play, pause and skip buttons (through the system's media session API), and to put a dot next to apps that have notifications. For the dots Polos only looks at which app posted a notification and what kind it is (ongoing, media, or one the app allows a dot for); it never reads what a notification says, and nothing is stored or sent. Dots can be turned off in Settings.
 - Accessibility service: to provide navigation gestures on phones that force 3-button navigation (swipe in from an edge for Back, swipe up from the bottom for Home, swipe up and hold for Recents) and to lock the screen on double-tap. The service only places invisible touch strips along the screen edges and triggers those system actions. It does not read, observe or record anything on your screen, and it receives no accessibility events.
 - Internet: only for the Open-Meteo weather request.
 - Set alarm and expand status bar: to open the clock app from the time and to open the notification shade on swipe down.

@@ -175,6 +175,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -335,6 +336,7 @@ class MainActivity : ComponentActivity() {
                                 onClose = { drawerOpen = false },
                                 onSettings = { drawerOpen = false; settingsOpen = true },
                                 onLaunch = { launch(it); drawerOpen = false },
+                                dots = if (settings.dots.on) NotificationDots.packages else emptySet(),
                                 menu = menu,
                             )
                         }
@@ -553,7 +555,7 @@ class MainActivity : ComponentActivity() {
             Access("Location", "Weather for your area", granted(LOCATION), grant = { askPermission(LOCATION) }),
             Access("Calendar", "Today's and upcoming events", granted(CALENDAR), grant = { askPermission(CALENDAR) }),
             Access("Usage access", "Screen time and recent apps", hasUsageAccess(), ::openUsageAccess),
-            Access("Notification access", "Now playing and its controls", hasNotificationAccess(), ::openNotificationAccess),
+            Access("Notification access", "Now playing, and dots by apps with notifications (never what they say)", hasNotificationAccess(), ::openNotificationAccess),
             Access(
                 "Accessibility",
                 if (gestures == GestureState.Broken) "Not working: Android stopped it. Tap to turn it off and on again"
@@ -765,7 +767,11 @@ class MainActivity : ComponentActivity() {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                 Column(Modifier.weight(1f).spot("today", spots)) { TodayColumn() }
                 Box(Modifier.spot("favorites", spots)) {
-                    Favorites(favorites.mapNotNull { key -> apps.find { it.key == key } }, ::open, ::swapFavorites, menu)
+                    Favorites(
+                        favorites.mapNotNull { key -> apps.find { it.key == key } },
+                        dots = if (settings.dots.on) NotificationDots.packages else emptySet(),
+                        ::open, ::swapFavorites, menu,
+                    )
                 }
             }
             Spacer(Modifier.height(24.dp))
@@ -1028,6 +1034,7 @@ private fun AppList(
     onClose: () -> Unit,
     onSettings: () -> Unit,
     onLaunch: (Intent) -> Unit,
+    dots: Set<String>,
     menu: AppMenu,
 ) {
     var query by remember { mutableStateOf("") }
@@ -1068,7 +1075,7 @@ private fun AppList(
                 modifier = Modifier.fillMaxSize().padding(end = 48.dp),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
-                items(shown, key = { it.key }) { AppItem(it, 22.sp, onOpen, menu, Modifier.fillMaxWidth()) }
+                items(shown, key = { it.key }) { AppItem(it, 22.sp, onOpen, menu, Modifier.fillMaxWidth(), dot = it.info.componentName.packageName in dots) }
                 // after the apps, so the best app match stays right above the field; with none, these are what sits there
                 if (searching) {
                     item(key = "search:web") { SearchElsewhere("Search the web for \u201c$query\u201d") { onLaunch(webSearch(query)) } }
@@ -1353,7 +1360,7 @@ private fun AlphabetScroller(
  * without moving still opens the app's menu, which closes once the drag starts.
  */
 @Composable
-private fun Favorites(apps: List<App>, onOpen: (App) -> Unit, onSwap: (String, String) -> Unit, menu: AppMenu) {
+private fun Favorites(apps: List<App>, dots: Set<String>, onOpen: (App) -> Unit, onSwap: (String, String) -> Unit, menu: AppMenu) {
     val state = rememberLazyListState()
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
@@ -1434,6 +1441,7 @@ private fun Favorites(apps: List<App>, onOpen: (App) -> Unit, onSwap: (String, S
                 fontWeight = FontWeight.Light,
                 align = Alignment.End,
                 dragging = isDragged,
+                dot = app.info.componentName.packageName in dots,
                 modifier = if (isDragged) {
                     Modifier.zIndex(1f).graphicsLayer {
                         // follows the finger wherever the list has put its slot by now
@@ -1452,6 +1460,9 @@ private fun Favorites(apps: List<App>, onOpen: (App) -> Unit, onSwap: (String, S
 }
 
 @Composable
+private fun NotificationDot() = Box(Modifier.size(6.dp).background(TextSecondary, CircleShape))
+
+@Composable
 private fun AppItem(
     app: App,
     fontSize: TextUnit,
@@ -1461,6 +1472,7 @@ private fun AppItem(
     fontWeight: FontWeight? = null,
     align: Alignment.Horizontal = Alignment.Start,
     dragging: Boolean = false,
+    dot: Boolean = false, // the app has notifications
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     LaunchedEffect(dragging) { if (dragging) menuOpen = false } // the hold became a drag: the menu isn't wanted
@@ -1474,11 +1486,17 @@ private fun AppItem(
                     awaitEachGesture { press = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial).position }
                 }
                 .combinedClickable(onClick = { onOpen(app) }, onLongClick = { menuOpen = true })
+                .semantics { if (dot) stateDescription = "Has notifications" }
                 // a little less air when a subtitle adds a line, so twins don't stand out as oversized rows
                 .padding(horizontal = 24.dp, vertical = if (app.detail != null) 8.dp else 12.dp),
             horizontalAlignment = align,
         ) {
-            Text(text = app.label, fontSize = fontSize, fontWeight = fontWeight, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // the dot goes on the side away from the alignment edge, so the name itself never moves
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (dot && align == Alignment.End) { NotificationDot(); Spacer(Modifier.width(10.dp)) }
+                Text(text = app.label, fontSize = fontSize, fontWeight = fontWeight, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (dot && align != Alignment.End) { Spacer(Modifier.width(10.dp)); NotificationDot() }
+            }
             app.detail?.let {
                 Text(text = it, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -1798,6 +1816,11 @@ private fun SettingsPage(
                     settings.weather.row("Weather", "Conditions under the date, plus today's high, low and rain"),
                     settings.battery.row("Battery percentage"),
                     settings.music.row("Now playing", "Song and controls while music plays"),
+                    settings.dots.row(
+                        "Notification dots",
+                        if (context.hasNotificationAccess()) "A dot by apps with notifications, on home and in the drawer"
+                        else "Needs notification access (Launcher > Permissions)",
+                    ),
                     settings.events.row("Calendar events", "All-day events and the next one coming up"),
                     settings.alarm.row("Next alarm"),
                     settings.device.row("Device stats", "RAM, CPU speed and battery current"),

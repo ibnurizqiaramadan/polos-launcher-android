@@ -14,6 +14,7 @@ Package: `id.ibnurizqia.launcher`. Android 8.0 (API 26) ke atas.
 - Kolom **Device**: pemakaian RAM, rentang clock CPU plus status panas, arus baterai (charging/using) dan suhu, diperbarui tiap 5 detik hanya saat home terlihat
 - **Favorit** maksimal 6 app, rata kanan dalam jangkauan jempol; tahan lalu geser untuk mengatur urutan
 - **Now playing** dengan tombol prev / play-pause / next, untuk pemutar musik apa pun
+- **Titik notifikasi** di samping nama app yang punya notifikasi (favorit dan drawer); notifikasi ongoing dan media tidak dihitung, isi notifikasi tidak pernah dibaca
 - Shortcut Phone dan Camera di pojok bawah, screen time hari ini di tengah
 - Baris "Show:" untuk fitur yang masih butuh izin; tap untuk memberi izin, tahan untuk menyembunyikan
 
@@ -69,7 +70,7 @@ Semua opsional. Launcher tetap berfungsi penuh tanpa satu pun izin ini; yang hil
 | Lokasi perkiraan | Cuaca (Open-Meteo, dengan nama daerah dari Geocoder) | `Weather.kt` |
 | Kalender | Acara hari ini dan berikutnya | `MainActivity.kt` |
 | Usage access | Screen time dan daftar Recent | `ScreenTime.kt` |
-| Akses notifikasi | Now playing, lewat `MediaSessionManager` (notifikasi tidak dibaca) | `NowPlaying.kt` |
+| Akses notifikasi | Now playing lewat `MediaSessionManager`, dan titik notifikasi (hanya app pengirim dan jenisnya, isinya tidak dibaca) | `NowPlaying.kt` |
 | Accessibility | Gesture navigasi dan kunci layar, lewat `performGlobalAction` (isi layar tidak dibaca) | `Gestures.kt` |
 | Internet | Hanya ke `api.open-meteo.com` | `Weather.kt` |
 
