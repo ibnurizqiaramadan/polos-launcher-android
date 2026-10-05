@@ -331,6 +331,7 @@ class MainActivity : ComponentActivity() {
                                 onOpen = ::open,
                                 onClose = { drawerOpen = false },
                                 onSettings = { drawerOpen = false; settingsOpen = true },
+                                onLaunch = { launch(it); drawerOpen = false },
                                 menu = menu,
                             )
                         }
@@ -1012,6 +1013,7 @@ private fun AppList(
     onOpen: (App) -> Unit,
     onClose: () -> Unit,
     onSettings: () -> Unit,
+    onLaunch: (Intent) -> Unit,
     menu: AppMenu,
 ) {
     var query by remember { mutableStateOf("") }
@@ -1053,6 +1055,11 @@ private fun AppList(
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
                 items(shown, key = { it.key }) { AppItem(it, 22.sp, onOpen, menu, Modifier.fillMaxWidth()) }
+                // after the apps, so the best app match stays right above the field; with none, these are what sits there
+                if (searching) {
+                    item(key = "search:web") { SearchElsewhere("Search the web for \u201c$query\u201d") { onLaunch(webSearch(query)) } }
+                    item(key = "search:store") { SearchElsewhere("Search Play Store for \u201c$query\u201d") { onLaunch(storeSearch(query)) } }
+                }
                 if (showHidden || hiddenCount > 0) item {
                     Text(
                         text = if (showHidden) "Back to apps" else "Hidden apps ($hiddenCount)",
@@ -1107,7 +1114,7 @@ private fun AppList(
             textStyle = TextStyle(color = TextPrimary, fontSize = 18.sp),
             cursorBrush = SolidColor(TextPrimary),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-            keyboardActions = KeyboardActions(onGo = { if (query.isNotBlank()) shown.firstOrNull()?.let(onOpen) }),
+            keyboardActions = KeyboardActions(onGo = { if (query.isNotBlank()) shown.firstOrNull()?.let(onOpen) ?: onLaunch(webSearch(query)) }),
             decorationBox = { field ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Search, contentDescription = null, tint = TextMuted, modifier = Modifier.size(20.dp))
@@ -1193,6 +1200,25 @@ private val WaveShift = 40.dp
  * Letters near the finger bulge left, grow and brighten on a smooth falloff; letters with no apps
  * are dimmed but still land on the next letter that has some.
  */
+private fun webSearch(query: String) = Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, query)
+
+// the web address rather than market://: the Play Store app claims it, and phones without one open it in the browser
+private fun storeSearch(query: String) = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/search?q=${Uri.encode(query)}&c=apps"))
+
+// for when the app isn't installed or the search is for something else entirely
+@Composable
+private fun SearchElsewhere(text: String, onClick: () -> Unit) = Row(
+    Modifier
+        .fillMaxWidth()
+        .clickable(onClick = onClick)
+        .padding(horizontal = 24.dp, vertical = 14.dp),
+    verticalAlignment = Alignment.CenterVertically,
+) {
+    Icon(Icons.Default.Search, contentDescription = null, tint = TextMuted, modifier = Modifier.size(20.dp))
+    Spacer(Modifier.width(12.dp))
+    Text(text, color = TextSecondary, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+}
+
 // Fades a scrolling row out at whichever end has more to scroll to, so it reads as swipeable rather than cut off.
 // Offscreen so the fade masks only the row, letting whatever is behind it show through.
 private fun Modifier.fadingEdges(state: LazyListState) = graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }

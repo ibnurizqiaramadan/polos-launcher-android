@@ -20,7 +20,7 @@ Package: `id.ibnurizqia.launcher`. Android 8.0 (API 26) ke atas.
 ### App drawer
 - Daftar teks A–Z, swipe up dari home untuk membuka
 - Index alfabet # A–Z di sisi kanan setinggi list, dengan efek gelombang saat digeser
-- Pencarian di bawah, dekat jempol; hasil tersusun dari bawah dengan yang paling cocok tepat di atas kolom pencarian, Enter untuk membuka
+- Pencarian di bawah, dekat jempol; hasil tersusun dari bawah dengan yang paling cocok tepat di atas kolom pencarian, Enter untuk membuka. Di bawah hasil selalu ada "Search the web" dan "Search Play Store"; Enter tanpa hasil langsung mencari di web
 - Baris **Recent** sampai 10 app, bisa digeser ke samping
 - Sembunyikan app dan ganti nama label; app kembar (nama sama) diberi subtitle package
 - Latar drawer bisa dipilih: home yang diblur, wallpaper saja (tajam atau diblur), atau hitam pekat; level blur 0–10 (Android 12+)
